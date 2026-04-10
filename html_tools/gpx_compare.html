@@ -1,0 +1,964 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GPX Trajectory Compare (Time/Space)</title>
+
+  <!-- Leaflet (CDN). For offline/local-only, download these and replace URLs. -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+
+  <style>
+    :root { --bg:#0b0f14; --fg:#e6edf3; --muted:#9aa4af; --panel:#111824; --line:#223043; --trk1:#57c7ff; --trk2:#ffb457; }
+    html,body { height:100%; margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--fg); }
+    .app { display:grid; grid-template-columns: 1fr 420px; grid-template-rows: 1fr auto; height:100%; }
+    #map { grid-column:1; grid-row:1; }
+    .right { grid-column:2; grid-row:1 / span 2; display:flex; flex-direction:column; gap:12px; padding:12px; border-left:1px solid var(--line); background:linear-gradient(180deg, #0b0f14, #0b0f14 60%, #0a0d12); }
+    .bottom { grid-column:1; grid-row:2; padding:10px 12px; border-top:1px solid var(--line); background:rgba(17,24,36,0.65); backdrop-filter: blur(6px); }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px; }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .row > * { flex:0 0 auto; }
+    label { font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
+    input[type="file"] { width:100%; }
+    input[type="range"] { width: 100%; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .small { font-size:12px; color:var(--muted); }
+    .kpi { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+    .kpi .v { font-size:18px; font-weight:600; }
+    canvas { width:100%; height:auto; display:block; background:#0b121c; border:1px solid var(--line); border-radius:10px; }
+    .hint { font-size:12px; color:var(--muted); line-height:1.35; }
+    .btn { cursor:pointer; border:1px solid var(--line); background:#0d1622; color:var(--fg); border-radius:10px; padding:8px 10px; }
+    .btn:disabled { opacity:0.5; cursor:not-allowed; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+    .trkDot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:-1px; }
+    .trk1 { background:var(--trk1); }
+    .trk2 { background:var(--trk2); }
+    .trk1Txt { color:var(--trk1); }
+    .trk2Txt { color:var(--trk2); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div id="map"></div>
+
+    <div class="right">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;">
+          <div style="font-weight:700;">GPX Compare</div>
+          <button id="fitBtn" class="btn" disabled>Fit tracks</button>
+        </div>
+        <div class="grid2" style="margin-top:10px;">
+          <div>
+            <label><span class="trkDot trk1"></span>GPX #1</label>
+            <input id="file1" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml" />
+            <div id="meta1" class="small mono trk1Txt"></div>
+          </div>
+          <div>
+            <label><span class="trkDot trk2"></span>GPX #2</label>
+            <input id="file2" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml" />
+            <div id="meta2" class="small mono trk2Txt"></div>
+          </div>
+        </div>
+        <!--
+        <div class="hint" style="margin-top:10px;">
+          Offset shifts GPX#2 in time relative to GPX#1. Time slider selects an absolute time reference.
+          Markers + connecting line show instantaneous spatial separation. Lower chart shows inclination over distance.
+        </div>-->
+      </div>
+
+      <div class="card">
+        <label>Offset (GPX#2 vs GPX#1)</label>
+        <input id="offset" type="range" min="-15000" max="1000" step="1" value="0" disabled />
+        <div class="row" style="justify-content:space-between;">
+          <div class="small mono">offset = <span id="offsetVal">0</span> s</div>
+          <button id="autoOffsetBtn" class="btn" disabled>Auto offset (start times)</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="kpi">
+          <div>
+            <label>Lateral distance</label>
+            <div class="v mono" id="dist2d">—</div>
+            <div class="small mono" id="dist2dSub"></div>
+          </div>
+          <div>
+            <label>Height delta</label>
+            <div class="v mono" id="dH">—</div>
+            <div class="small mono" id="hSub"></div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <div class="small mono">t = <span id="tVal">—</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <label>Height profile (vs distance)</label>
+        <canvas id="elevCanvas" width="800" height="300"></canvas>
+        <div class="grid2" style="margin-top:6px;">
+          <div>
+            <div class="small mono trk1Txt">h1=<span id="h1">—</span> m</div>
+            <div class="small mono trk1Txt" id="incl1Now">incl1=—</div>
+            <div class="small mono trk1Txt" id="v1Now">v1=—</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="small mono trk2Txt">h2=<span id="h2">—</span> m</div>
+            <div class="small mono trk2Txt" id="incl2Now">incl2=—</div>
+            <div class="small mono trk2Txt" id="v2Now">v2=—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between;">
+          <label style="margin-bottom:0;">Inclination over distance</label>
+          <div class="small mono">
+            source=
+            <select id="inclSource" class="btn" style="padding:4px 8px; border-radius:8px;">
+              <option value="1">track1</option>
+              <option value="2">track2</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:6px;">
+          <label style="margin-bottom:4px;">Inclination window</label>
+          <input id="inclWindow" type="range" min="10" max="300" step="5" value="50" />
+          <div class="small mono">window=<span id="inclWindowVal">50</span> m</div>
+        </div>
+        <canvas id="inclCanvas" width="800" height="420"></canvas>
+        <div class="small mono" id="inclGraphNow">incl(now): track1=—, track2=—</div>
+      </div>
+    </div>
+
+    <div class="bottom">
+      <div class="row" style="gap:12px;">
+        <div style="flex:1 1 auto;">
+          <label>Time</label>
+          <input id="time" type="range" min="0" max="1" step="1" value="0" disabled />
+          <div class="row" style="justify-content:space-between;">
+            <div class="small mono" id="timeMin">—</div>
+            <div class="small mono" id="timeMax">—</div>
+          </div>
+        </div>
+        <button id="playBtn" class="btn" disabled>Play</button>
+        <button id="pauseBtn" class="btn" disabled>Pause</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ---------- Utilities ----------
+  const R = 6371000; // meters
+  function toRad(d){ return d * Math.PI / 180; }
+
+  function haversine(lat1, lon1, lat2, lon2) {
+    const φ1 = toRad(lat1), φ2 = toRad(lat2);
+    const dφ = toRad(lat2 - lat1);
+    const dλ = toRad(lon2 - lon1);
+    const a = Math.sin(dφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+
+  function fmtTime(ms){
+    const d = new Date(ms);
+    // ISO without ms
+    return d.toISOString().replace(/\.\d{3}Z$/, "Z");
+  }
+
+  function clamp(x,a,b){ return Math.max(a, Math.min(b, x)); }
+
+  function binSearchRight(arr, x){
+    // rightmost index i such that arr[i] <= x, assuming arr sorted ascending
+    let lo=0, hi=arr.length-1;
+    if (x < arr[0]) return -1;
+    if (x >= arr[hi]) return hi;
+    while (lo <= hi){
+      const mid = (lo+hi)>>1;
+      if (arr[mid] <= x) lo = mid+1; else hi = mid-1;
+    }
+    return hi;
+  }
+
+  function parseGpx(text){
+    const doc = new DOMParser().parseFromString(text, "application/xml");
+    const pts = [...doc.querySelectorAll("trkpt")];
+    const out = [];
+    for (const p of pts){
+      const lat = parseFloat(p.getAttribute("lat"));
+      const lon = parseFloat(p.getAttribute("lon"));
+      const eleEl = p.querySelector("ele");
+      const timeEl = p.querySelector("time");
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || !timeEl) continue;
+      const ele = eleEl ? parseFloat(eleEl.textContent) : NaN;
+      const t = Date.parse(timeEl.textContent.trim());
+      if (!Number.isFinite(t)) continue;
+      out.push({lat, lon, ele: Number.isFinite(ele)? ele : NaN, t});
+    }
+    // ensure monotonic time (some GPX can repeat timestamps)
+    out.sort((a,b)=>a.t-b.t);
+    // remove duplicates with same time by keeping last
+    const dedup = [];
+    for (const p of out){
+      const last = dedup[dedup.length-1];
+      if (last && last.t === p.t) dedup[dedup.length-1] = p;
+      else dedup.push(p);
+    }
+    // cumulative distance
+    let s = 0;
+    for (let i=0;i<dedup.length;i++){
+      if (i>0){
+        const a = dedup[i-1], b = dedup[i];
+        s += haversine(a.lat,a.lon,b.lat,b.lon);
+      }
+      dedup[i].s = s; // meters
+    }
+    // fill missing ele with nearest-neighbor forward/backward
+    // (keeps UI stable if ele absent)
+    let lastEle = NaN;
+    for (let i=0;i<dedup.length;i++){
+      if (Number.isFinite(dedup[i].ele)) lastEle = dedup[i].ele;
+      else if (Number.isFinite(lastEle)) dedup[i].ele = lastEle;
+    }
+    for (let i=dedup.length-2;i>=0;i--){
+      if (!Number.isFinite(dedup[i].ele)) dedup[i].ele = dedup[i+1].ele;
+    }
+
+    const times = dedup.map(p=>p.t);
+
+    const t0 = dedup[0]?.t ?? NaN;
+    const t1 = dedup[dedup.length-1]?.t ?? NaN;
+
+    // relative time (ms from start)
+    for (const p of dedup) p.tr = p.t - t0;
+    const rtimes = dedup.map(p=>p.tr);
+
+    return {
+      pts: dedup,
+      times,          // absolute ms (kept for metadata)
+      rtimes,         // relative ms from start (monotonic)
+      t0, t1,
+      r0: 0,
+      r1: dedup[dedup.length-1]?.tr ?? 0,
+      sTotal: dedup[dedup.length-1]?.s ?? 0
+    };
+  }
+
+  function sampleAtRelTime(track, tr){
+    if (!track || !track.pts.length) return null;
+    const times = track.rtimes;
+    if (tr < times[0] || tr > times[times.length-1]) return null;
+    const i = binSearchRight(times, tr);
+    if (i < 0) return null;
+    if (i === times.length-1) return track.pts[i];
+    const a = track.pts[i], b = track.pts[i+1];
+    const dt = (b.tr - a.tr);
+    const f = dt > 0 ? (tr - a.tr) / dt : 0;
+    return {
+      tr,
+      lat: a.lat + f*(b.lat - a.lat),
+      lon: a.lon + f*(b.lon - a.lon),
+      ele: a.ele + f*(b.ele - a.ele),
+      s: a.s + f*(b.s - a.s)
+    };
+  }
+
+  function eleAtDistance(track, s){
+    if (!track || !track.pts || !track.pts.length) return NaN;
+    const clamped = clamp(s, 0, track.sTotal || 0);
+    const pts = track.pts;
+    if (pts.length === 1) return pts[0].ele;
+    if (clamped <= pts[0].s) return pts[0].ele;
+    if (clamped >= pts[pts.length-1].s) return pts[pts.length-1].ele;
+
+    let lo = 0, hi = pts.length - 1;
+    while (lo <= hi){
+      const mid = (lo + hi) >> 1;
+      if (pts[mid].s <= clamped) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    const i = Math.max(0, Math.min(hi, pts.length - 2));
+    const a = pts[i], b = pts[i+1];
+    const ds = b.s - a.s;
+    if (!Number.isFinite(ds) || ds <= 0) return a.ele;
+    const f = (clamped - a.s) / ds;
+    return a.ele + f * (b.ele - a.ele);
+  }
+
+  function inclinationAtDistance(track, sCenter, windowM){
+    if (!track || !track.pts || track.pts.length < 2) return null;
+    const w = Math.max(1, Number(windowM) || 1);
+    const half = w / 2;
+    const s0 = clamp(sCenter - half, 0, track.sTotal || 0);
+    const s1 = clamp(sCenter + half, 0, track.sTotal || 0);
+    const ds = s1 - s0;
+    if (!Number.isFinite(ds) || ds < 1) return null;
+    const e0 = eleAtDistance(track, s0);
+    const e1 = eleAtDistance(track, s1);
+    if (!Number.isFinite(e0) || !Number.isFinite(e1)) return null;
+    const dh = e1 - e0;
+    const gradePct = (dh / ds) * 100;
+    const angleDeg = Math.atan2(dh, ds) * 180 / Math.PI;
+    return { gradePct, angleDeg };
+  }
+
+  function localInclinationAtRelTime(track, tr, windowM){
+    if (!track || !track.pts || track.pts.length < 2) return null;
+    const times = track.rtimes;
+    if (tr < times[0] || tr > times[times.length-1]) return null;
+    const p = sampleAtRelTime(track, tr);
+    if (!p || !Number.isFinite(p.s)) return null;
+    return inclinationAtDistance(track, p.s, windowM);
+  }
+
+  function localVelocityAtRelTime(track, tr){
+    if (!track || !track.pts || track.pts.length < 2) return null;
+    const times = track.rtimes;
+    if (tr < times[0] || tr > times[times.length-1]) return null;
+
+    const i = binSearchRight(times, tr);
+    if (i < 0) return null;
+
+    const i0 = Math.max(0, Math.min(i, track.pts.length - 2));
+    const i1 = i0 + 1;
+    const a = track.pts[i0], b = track.pts[i1];
+
+    const ds = b.s - a.s;
+    const dtSec = (b.tr - a.tr) / 1000;
+    if (!Number.isFinite(ds) || !Number.isFinite(dtSec) || dtSec <= 0) return null;
+
+    const vMs = ds / dtSec;
+    const vKmh = vMs * 3.6;
+    return { vMs, vKmh };
+  }
+
+  function niceMeters(m){
+    if (!Number.isFinite(m)) return "—";
+    if (Math.abs(m) < 1000) return `${m.toFixed(1)} m`;
+    return `${(m/1000).toFixed(3)} km`;
+  }
+
+  // ---------- UI + Map ----------
+  const map = L.map("map", { zoomControl: true }).setView([46.05, 14.5], 11);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  const file1 = document.getElementById("file1");
+  const file2 = document.getElementById("file2");
+  const meta1 = document.getElementById("meta1");
+  const meta2 = document.getElementById("meta2");
+
+  const offset = document.getElementById("offset");
+  const offsetVal = document.getElementById("offsetVal");
+  const autoOffsetBtn = document.getElementById("autoOffsetBtn");
+
+  const time = document.getElementById("time");
+  const timeMin = document.getElementById("timeMin");
+  const timeMax = document.getElementById("timeMax");
+  const tVal = document.getElementById("tVal");
+
+  const dist2d = document.getElementById("dist2d");
+  const dist2dSub = document.getElementById("dist2dSub");
+  const dH = document.getElementById("dH");
+  const hSub = document.getElementById("hSub");
+  const h1 = document.getElementById("h1");
+  const h2 = document.getElementById("h2");
+  const incl1Now = document.getElementById("incl1Now");
+  const incl2Now = document.getElementById("incl2Now");
+  const v1Now = document.getElementById("v1Now");
+  const v2Now = document.getElementById("v2Now");
+  const inclGraphNow = document.getElementById("inclGraphNow");
+  const inclSource = document.getElementById("inclSource");
+  const inclWindow = document.getElementById("inclWindow");
+  const inclWindowVal = document.getElementById("inclWindowVal");
+
+  const fitBtn = document.getElementById("fitBtn");
+  const playBtn = document.getElementById("playBtn");
+  const pauseBtn = document.getElementById("pauseBtn");
+
+  const elevCanvas = document.getElementById("elevCanvas");
+  const inclCanvas  = document.getElementById("inclCanvas");
+  const ectx = elevCanvas.getContext("2d");
+  const ictx = inclCanvas.getContext("2d");
+
+  const rootStyles = getComputedStyle(document.documentElement);
+  const TRACK1_COLOR = rootStyles.getPropertyValue("--trk1").trim() || "#57c7ff";
+  const TRACK2_COLOR = rootStyles.getPropertyValue("--trk2").trim() || "#ffb457";
+
+  let tr1=null, tr2=null;
+  let poly1=null, poly2=null;
+  let mk1=null, mk2=null, linkLine=null;
+
+  let playTimer = null;
+
+  // Simple styles (Leaflet colors are default-ish)
+  function makeCircle(latlng, color){
+    return L.circleMarker(latlng, { radius: 6, weight: 2, color, fillColor: color, fillOpacity: 1.0 });
+  }
+
+  function setEnabled(enabled){
+    offset.disabled = !enabled;
+    time.disabled = !enabled;
+    fitBtn.disabled = !enabled;
+    playBtn.disabled = !enabled;
+    pauseBtn.disabled = !enabled;
+    autoOffsetBtn.disabled = !enabled;
+  }
+
+  function hasTrack1(){ return !!(tr1 && tr1.pts && tr1.pts.length > 1); }
+  function hasTrack2(){ return !!(tr2 && tr2.pts && tr2.pts.length > 1); }
+  function anyTrackReady(){ return hasTrack1() || hasTrack2(); }
+  function bothTracksReady(){ return hasTrack1() && hasTrack2(); }
+
+  function updateControls(){
+    const anyReady = anyTrackReady();
+    setEnabled(anyReady);
+    autoOffsetBtn.disabled = !bothTracksReady();
+
+    const has1 = hasTrack1();
+    const has2 = hasTrack2();
+    const opt1 = inclSource.querySelector('option[value="1"]');
+    const opt2 = inclSource.querySelector('option[value="2"]');
+    if (opt1) opt1.disabled = !has1;
+    if (opt2) opt2.disabled = !has2;
+    if (inclSource.value === "1" && !has1 && has2) inclSource.value = "2";
+    if (inclSource.value === "2" && !has2 && has1) inclSource.value = "1";
+    inclSource.disabled = !(has1 && has2);
+  }
+
+  function bindWheelAdjust(rangeEl){
+    rangeEl.addEventListener("wheel", (ev) => {
+      if (rangeEl.disabled) return;
+      ev.preventDefault();
+      const min = Number(rangeEl.min);
+      const max = Number(rangeEl.max);
+      const step = Number(rangeEl.step || 1);
+      const cur = Number(rangeEl.value);
+      const dir = ev.deltaY < 0 ? 1 : -1;
+      const next = clamp(cur + dir * step, min, max);
+      rangeEl.value = String(next);
+      rangeEl.dispatchEvent(new Event("input"));
+    }, { passive: false });
+  }
+
+  function updateMeta(){
+    function m(tr){
+      if (!tr) return "";
+      const dur = (tr.t1 - tr.t0)/1000;
+      return `pts=${tr.pts.length}\nstart=${fmtTime(tr.t0)}\nend=${fmtTime(tr.t1)}\ndur=${dur.toFixed(1)}s\ndist=${(tr.sTotal/1000).toFixed(3)}km`;
+    }
+    meta1.textContent = m(tr1);
+    meta2.textContent = m(tr2);
+  }
+
+  function updateTimeRange(){
+    if (!anyTrackReady()) return;
+    const minT = 0;
+    const maxT = Math.max(hasTrack1() ? tr1.r1 : 0, hasTrack2() ? tr2.r1 : 0);
+    time.min = String(minT);
+    time.max = String(maxT);
+    time.step = "1000"; // 1 second
+    const cur = clamp(parseInt(time.value || minT,10), minT, maxT);
+    time.value = String(cur);
+    timeMin.textContent = `t=${(minT/1000).toFixed(0)}s`;
+    timeMax.textContent = `t=${(maxT/1000).toFixed(0)}s`;
+  }
+
+  function clearMapLayers(){
+    if (poly1) map.removeLayer(poly1), poly1=null;
+    if (poly2) map.removeLayer(poly2), poly2=null;
+    if (mk1) map.removeLayer(mk1), mk1=null;
+    if (mk2) map.removeLayer(mk2), mk2=null;
+    if (linkLine) map.removeLayer(linkLine), linkLine=null;
+  }
+
+  function drawTracks(){
+    clearMapLayers();
+    if (!anyTrackReady()) return;
+
+    const all = [];
+    if (hasTrack1()){
+      const latlngs1 = tr1.pts.map(p=>[p.lat,p.lon]);
+      poly1 = L.polyline(latlngs1, { weight: 4, opacity: 0.9, color: TRACK1_COLOR }).addTo(map);
+      mk1 = makeCircle(latlngs1[0], TRACK1_COLOR).addTo(map);
+      all.push(...latlngs1);
+    }
+    if (hasTrack2()){
+      const latlngs2 = tr2.pts.map(p=>[p.lat,p.lon]);
+      poly2 = L.polyline(latlngs2, { weight: 4, opacity: 0.9, color: TRACK2_COLOR, dashArray: "8 8" }).addTo(map);
+      mk2 = makeCircle(latlngs2[0], TRACK2_COLOR).addTo(map);
+      all.push(...latlngs2);
+    }
+    if (hasTrack1() && hasTrack2() && mk1 && mk2){
+      linkLine = L.polyline([mk1.getLatLng(), mk2.getLatLng()], { weight: 2, opacity: 0.8 }).addTo(map);
+    }
+
+    if (all.length){
+      const b = L.latLngBounds(all);
+      map.fitBounds(b.pad(0.1));
+    }
+  }
+
+  fitBtn.addEventListener("click", () => {
+    if (!anyTrackReady()) return;
+    const all = [];
+    if (hasTrack1()) all.push(...tr1.pts.map(p=>[p.lat,p.lon]));
+    if (hasTrack2()) all.push(...tr2.pts.map(p=>[p.lat,p.lon]));
+    if (!all.length) return;
+    const b = L.latLngBounds(all);
+    map.fitBounds(b.pad(0.1));
+  });
+
+  autoOffsetBtn.addEventListener("click", () => {
+    if (!bothTracksReady()) return;
+    offset.value = "0";
+    offset.dispatchEvent(new Event("input"));
+  });
+
+  // ---------- Plotting ----------
+  function drawAxes(ctx, w, h, pad){
+    ctx.strokeStyle = "rgba(154,164,175,0.25)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad, pad);
+    ctx.lineTo(pad, h-pad);
+    ctx.lineTo(w-pad, h-pad);
+    ctx.stroke();
+  }
+
+  function prepCanvas(canvas, ctx){
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = Math.max(1, Math.round(canvas.clientWidth || canvas.width));
+    const cssH = Math.max(1, Math.round(canvas.clientHeight || canvas.height));
+    const pxW = Math.round(cssW * dpr);
+    const pxH = Math.round(cssH * dpr);
+    if (canvas.width !== pxW || canvas.height !== pxH){
+      canvas.width = pxW;
+      canvas.height = pxH;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { w: cssW, h: cssH };
+  }
+
+  function getElevBounds(tr){
+    let mn=+Infinity, mx=-Infinity;
+    for (const p of tr.pts){
+      if (Number.isFinite(p.ele)){
+        if (p.ele < mn) mn=p.ele;
+        if (p.ele > mx) mx=p.ele;
+      }
+    }
+    if (!Number.isFinite(mn) || !Number.isFinite(mx) || mn===mx) { mn=0; mx=1; }
+    return {mn, mx};
+  }
+
+  function drawElevationProfile(){
+    const ctx = ectx;
+    const { w, h } = prepCanvas(elevCanvas, ctx);
+    const pad=36;
+    ctx.clearRect(0,0,w,h);
+    drawAxes(ctx,w,h,pad);
+
+    if (!anyTrackReady()) return;
+
+    // bounds from available tracks
+    let mn = +Infinity, mx = -Infinity;
+    let maxD = 1;
+    if (hasTrack1()){
+      const b1 = getElevBounds(tr1);
+      mn = Math.min(mn, b1.mn);
+      mx = Math.max(mx, b1.mx);
+      maxD = Math.max(maxD, tr1.sTotal || 1);
+    }
+    if (hasTrack2()){
+      const b2 = getElevBounds(tr2);
+      mn = Math.min(mn, b2.mn);
+      mx = Math.max(mx, b2.mx);
+      maxD = Math.max(maxD, tr2.sTotal || 1);
+    }
+    if (!Number.isFinite(mn) || !Number.isFinite(mx) || mn===mx) { mn=0; mx=1; }
+
+    function xy(s, ele){
+      const x = pad + (w-2*pad) * (s / maxD);
+      const y = (h-pad) - (h-2*pad) * ((ele - mn) / (mx - mn));
+      return [x,y];
+    }
+
+    // horizontal elevation grid: dotted every 100m, solid every 500m
+    const gridStart = Math.floor(mn / 100) * 100;
+    const gridEnd = Math.ceil(mx / 100) * 100;
+    for (let ele = gridStart; ele <= gridEnd; ele += 100){
+      const [, y] = xy(0, ele);
+      if (y < pad || y > h - pad) continue;
+      const is500 = (Math.round(ele) % 500) === 0;
+      ctx.beginPath();
+      if (is500){
+        ctx.strokeStyle = "rgba(154,164,175,0.38)";
+        ctx.setLineDash([]);
+        ctx.lineWidth = 1.2;
+      } else {
+        ctx.strokeStyle = "rgba(154,164,175,0.22)";
+        ctx.setLineDash([3,5]);
+        ctx.lineWidth = 1;
+      }
+      ctx.moveTo(pad, y);
+      ctx.lineTo(w - pad, y);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+
+    function strokeTrack(tr, color, dashed=false){
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      if (dashed) ctx.setLineDash([8,6]); else ctx.setLineDash([]);
+      ctx.beginPath();
+      for (let i=0;i<tr.pts.length;i++){
+        const p=tr.pts[i];
+        const [x,y] = xy(p.s, p.ele);
+        if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+    }
+
+    if (hasTrack1()) strokeTrack(tr1, TRACK1_COLOR, false);
+    if (hasTrack2()) strokeTrack(tr2, TRACK2_COLOR, false);
+    ctx.setLineDash([]);
+
+    // current markers
+    const tr = parseInt(time.value,10);
+    const off = parseInt(offset.value,10)*1000;
+    const p1 = hasTrack1() ? sampleAtRelTime(tr1, tr) : null;
+    const p2 = hasTrack2() ? sampleAtRelTime(tr2, tr + off) : null;
+
+    if (p1){
+      const [x,y] = xy(p1.s, p1.ele);
+      ctx.fillStyle = TRACK1_COLOR;
+      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle="rgba(87,199,255,0.35)";
+      ctx.beginPath(); ctx.moveTo(x,pad); ctx.lineTo(x,h-pad); ctx.stroke();
+    }
+    if (p2){
+      const [x,y] = xy(p2.s, p2.ele);
+      ctx.fillStyle = TRACK2_COLOR;
+      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle="rgba(255,180,87,0.30)";
+      ctx.setLineDash([6,6]);
+      ctx.beginPath(); ctx.moveTo(x,pad); ctx.lineTo(x,h-pad); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // labels
+    ctx.fillStyle = "rgba(154,164,175,0.85)";
+    ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+    ctx.fillText(`${mn.toFixed(0)} m`, 6, h-pad+4);
+    ctx.fillText(`${mx.toFixed(0)} m`, 6, pad+8);
+    ctx.fillText(`${(maxD/1000).toFixed(2)} km`, w-pad-90, h-10);
+  }
+
+  function drawInclinationPlot(){
+    const ctx = ictx;
+    const { w, h } = prepCanvas(inclCanvas, ctx);
+    const pad=36;
+    ctx.clearRect(0,0,w,h);
+    drawAxes(ctx,w,h,pad);
+
+    if (!anyTrackReady()) return;
+    const inclWindowMeters = parseInt(inclWindow.value, 10) || 50;
+
+    function inclinationSeries(track){
+      if (!track || !track.pts || track.pts.length < 2) return [];
+      const out = [];
+      for (let i=0;i<track.pts.length;i++){
+        const p = track.pts[i];
+        const incl = inclinationAtDistance(track, p.s, inclWindowMeters);
+        if (!incl) continue;
+        out.push({ s: p.s, gradePct: incl.gradePct });
+      }
+      return out;
+    }
+
+    const selected = inclSource.value === "2" ? 2 : 1;
+    const canShow1 = selected === 1 && hasTrack1();
+    const canShow2 = selected === 2 && hasTrack2();
+    const s1 = canShow1 ? inclinationSeries(tr1) : [];
+    const s2 = canShow2 ? inclinationSeries(tr2) : [];
+    const active = selected === 2 ? s2 : s1;
+    if (!active.length) return;
+
+    const maxD = Math.max(selected === 2 ? (hasTrack2() ? tr2.sTotal : 0) : (hasTrack1() ? tr1.sTotal : 0), 1);
+    const mn = -15;
+    const mx = 15;
+
+    function xy(s, gradePct){
+      const x = pad + (w-2*pad) * (s / maxD);
+      const yy = (h-pad) - (h-2*pad) * ((gradePct - mn) / (mx - mn));
+      return [x, yy];
+    }
+
+    function zoneColor(gradePct){
+      const g = Math.abs(gradePct);
+      if (g < 5) return "#64d38a";   // 0-5%
+      if (g < 8) return "#f2c14e";   // 5-8%
+      if (g < 10) return "#f08a3e";  // 8-10%
+      return "#e05252";              // 10%+
+    }
+
+    function drawZoneLine(val, color){
+      if (val < mn || val > mx) return;
+      const [, y] = xy(0, val);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4,5]);
+      ctx.beginPath();
+      ctx.moveTo(pad, y);
+      ctx.lineTo(w-pad, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // zone boundaries (mirrored for descents too)
+    drawZoneLine(0, "rgba(154,164,175,0.38)");
+    drawZoneLine(5, "rgba(100,211,138,0.45)");
+    drawZoneLine(8, "rgba(242,193,78,0.45)");
+    drawZoneLine(10, "rgba(224,82,82,0.45)");
+    drawZoneLine(-5, "rgba(100,211,138,0.32)");
+    drawZoneLine(-8, "rgba(242,193,78,0.32)");
+    drawZoneLine(-10, "rgba(224,82,82,0.32)");
+
+    function strokeSeries(series, dashed=false){
+      if (!series.length) return;
+      ctx.lineWidth = 2;
+      for (let i=1;i<series.length;i++){
+        const p0 = series[i-1], p1 = series[i];
+        if (Math.max(p0.gradePct, p1.gradePct) < mn || Math.min(p0.gradePct, p1.gradePct) > mx) continue;
+        const [x0,y0] = xy(p0.s, p0.gradePct);
+        const [x1,y1] = xy(p1.s, p1.gradePct);
+        const c = zoneColor((p0.gradePct + p1.gradePct) * 0.5);
+        ctx.strokeStyle = c;
+        if (dashed) ctx.setLineDash([8,6]); else ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(x0,y0);
+        ctx.lineTo(x1,y1);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+
+    strokeSeries(s1, false);
+    strokeSeries(s2, false);
+
+    // zero line
+    const [x0,y0] = xy(0, 0);
+    ctx.strokeStyle = "rgba(154,164,175,0.25)";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad,y0); ctx.lineTo(w-pad,y0); ctx.stroke();
+
+    // current position markers for each track
+    const tcur = parseInt(time.value,10);
+    const off = parseInt(offset.value,10)*1000;
+    const p1 = canShow1 ? sampleAtRelTime(tr1, tcur) : null;
+    const p2 = canShow2 ? sampleAtRelTime(tr2, tcur + off) : null;
+    const i1 = canShow1 ? localInclinationAtRelTime(tr1, tcur, inclWindowMeters) : null;
+    const i2 = canShow2 ? localInclinationAtRelTime(tr2, tcur + off, inclWindowMeters) : null;
+
+    if (p1 && i1){
+      if (i1.gradePct >= mn && i1.gradePct <= mx){
+      const [x,y] = xy(p1.s, i1.gradePct);
+      ctx.fillStyle = TRACK1_COLOR;
+      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
+      }
+    }
+    if (p2 && i2){
+      if (i2.gradePct >= mn && i2.gradePct <= mx){
+      const [x,y] = xy(p2.s, i2.gradePct);
+      ctx.fillStyle = TRACK2_COLOR;
+      ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
+      }
+    }
+
+    // labels
+    ctx.fillStyle = "rgba(154,164,175,0.85)";
+    ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+    ctx.fillText(`${mn.toFixed(1)} %`, 6, h-pad+4);
+    ctx.fillText(`${mx.toFixed(1)} %`, 6, pad+8);
+    ctx.fillText(`${(maxD/1000).toFixed(2)} km`, w-pad-90, h-10);
+
+    ctx.font = "13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+    ctx.fillStyle = "#64d38a";
+    ctx.fillText("0-5%", pad+6, pad+14);
+    ctx.fillStyle = "#f2c14e";
+    ctx.fillText("5-8%", pad+68, pad+14);
+    ctx.fillStyle = "#f08a3e";
+    ctx.fillText("8-10%", pad+130, pad+14);
+    ctx.fillStyle = "#e05252";
+    ctx.fillText("10%+", pad+202, pad+14);
+  }
+
+  // ---------- Main update ----------
+  function update(){
+    if (!anyTrackReady()) return;
+
+    const offSec = parseInt(offset.value,10);
+    const inclWindowMeters = parseInt(inclWindow.value, 10) || 50;
+    inclWindowVal.textContent = String(inclWindowMeters);
+    offsetVal.textContent = String(offSec);
+
+    const tr = parseInt(time.value,10);       // relative ms from GPX#1 start
+    tVal.textContent = `t=${(tr/1000).toFixed(1)}s`;
+
+    const p1 = hasTrack1() ? sampleAtRelTime(tr1, tr) : null;
+    const p2 = hasTrack2() ? sampleAtRelTime(tr2, tr + offSec*1000) : null;
+
+    if (mk1){
+      if (p1){ mk1.setLatLng([p1.lat, p1.lon]); mk1.setStyle({ opacity: 1, fillOpacity: 1 }); }
+      else mk1.setStyle({ opacity: 0, fillOpacity: 0 });
+    }
+    if (mk2){
+      if (p2){ mk2.setLatLng([p2.lat, p2.lon]); mk2.setStyle({ opacity: 1, fillOpacity: 1 }); }
+      else mk2.setStyle({ opacity: 0, fillOpacity: 0 });
+    }
+
+    if (p1 && p2){
+      if (linkLine) linkLine.setLatLngs([[p1.lat,p1.lon],[p2.lat,p2.lon]]);
+      const d2 = haversine(p1.lat,p1.lon,p2.lat,p2.lon);
+      const dh = (p2.ele - p1.ele);
+
+      dist2d.textContent = niceMeters(d2);
+      dist2dSub.textContent = `bearing-free 2D`;
+
+      dH.textContent = `${dh.toFixed(1)} m`;
+      hSub.textContent = `|Δh|=${Math.abs(dh).toFixed(1)} m`;
+    } else {
+      dist2d.textContent = "—";
+      dH.textContent = "—";
+      if (linkLine) linkLine.setLatLngs([]);
+    }
+
+    if (p1){
+      h1.textContent = p1.ele.toFixed(1);
+      const incl1 = localInclinationAtRelTime(tr1, tr, inclWindowMeters);
+      const vel1 = localVelocityAtRelTime(tr1, tr);
+      incl1Now.textContent = incl1
+        ? `incl1=${incl1.gradePct.toFixed(2)}% (${incl1.angleDeg.toFixed(2)}°)`
+        : "incl1=—";
+      v1Now.textContent = vel1
+        ? `v1=${vel1.vMs.toFixed(2)} m/s (${vel1.vKmh.toFixed(2)} km/h)`
+        : "v1=—";
+    } else {
+      h1.textContent = "—";
+      incl1Now.textContent = "incl1=—";
+      v1Now.textContent = "v1=—";
+    }
+
+    if (p2){
+      h2.textContent = p2.ele.toFixed(1);
+      const incl2 = localInclinationAtRelTime(tr2, tr + offSec*1000, inclWindowMeters);
+      const vel2 = localVelocityAtRelTime(tr2, tr + offSec*1000);
+      incl2Now.textContent = incl2
+        ? `incl2=${incl2.gradePct.toFixed(2)}% (${incl2.angleDeg.toFixed(2)}°)`
+        : "incl2=—";
+      v2Now.textContent = vel2
+        ? `v2=${vel2.vMs.toFixed(2)} m/s (${vel2.vKmh.toFixed(2)} km/h)`
+        : "v2=—";
+    } else {
+      h2.textContent = "—";
+      incl2Now.textContent = "incl2=—";
+      v2Now.textContent = "v2=—";
+    }
+
+    const selected = inclSource.value === "2" ? 2 : 1;
+    const curIncl1 = hasTrack1() ? localInclinationAtRelTime(tr1, tr, inclWindowMeters) : null;
+    const curIncl2 = hasTrack2() ? localInclinationAtRelTime(tr2, tr + offSec*1000, inclWindowMeters) : null;
+    const g1 = curIncl1 ? `${curIncl1.gradePct.toFixed(2)}%` : "—";
+    const g2 = curIncl2 ? `${curIncl2.gradePct.toFixed(2)}%` : "—";
+    inclGraphNow.textContent = selected === 2
+      ? `incl(now): track2=${g2}`
+      : `incl(now): track1=${g1}`;
+
+    drawElevationProfile();
+    drawInclinationPlot();
+  }
+
+  // ---------- Loading ----------
+  async function loadFile(input, which){
+    const f = input.files && input.files[0];
+    if (!f) return null;
+    const txt = await f.text();
+    const tr = parseGpx(txt);
+    if (!tr.pts.length) throw new Error("No trkpt/time points found in GPX.");
+    if (which === 1) tr1 = tr; else tr2 = tr;
+    updateMeta();
+    updateControls();
+    updateTimeRange();
+    drawTracks();
+    // fixed offset range
+    offset.min = "-15000";
+    offset.max = "1000";
+    offset.value = "0";
+    offset.dispatchEvent(new Event("input"));
+    update();
+  }
+
+  file1.addEventListener("change", () => loadFile(file1, 1).catch(e=>alert(`GPX#1: ${e.message}`)));
+  file2.addEventListener("change", () => loadFile(file2, 2).catch(e=>alert(`GPX#2: ${e.message}`)));
+
+  offset.addEventListener("input", () => {
+    update(); // offset affects sampling + plots
+  });
+
+  time.addEventListener("input", () => {
+    update();
+  });
+
+  inclSource.addEventListener("change", () => {
+    drawInclinationPlot();
+    update();
+  });
+
+  inclWindow.addEventListener("input", () => {
+    drawInclinationPlot();
+    update();
+  });
+
+  bindWheelAdjust(offset);
+  bindWheelAdjust(time);
+
+  // Play / pause
+  playBtn.addEventListener("click", () => {
+    if (!anyTrackReady()) return;
+    if (playTimer) return;
+    playTimer = setInterval(() => {
+      const t0 = parseInt(time.min,10), t1 = parseInt(time.max,10);
+      let t = parseInt(time.value,10);
+      t += 1000;
+      if (t > t1) t = t0;
+      time.value = String(t);
+      update();
+    }, 50); // faster UI, still stepping 1s
+  });
+
+  pauseBtn.addEventListener("click", () => {
+    if (playTimer){ clearInterval(playTimer); playTimer=null; }
+  });
+
+  // Initial disabled
+  updateControls();
+
+})();
+</script>
+</body>
+</html>

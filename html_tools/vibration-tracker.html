@@ -1,0 +1,1515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vibration Feature Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #080c10;
+  --surf:      #0e1318;
+  --surf2:     #131a21;
+  --surf3:     #1a2330;
+  --border:    #1e2d3d;
+  --border2:   #243545;
+  --accent:    #00c8ff;
+  --accent2:   #0090c8;
+  --green:     #00e5a0;
+  --red:       #ff4560;
+  --amber:     #ffb340;
+  --text:      #c8d8e8;
+  --text-dim:  #4a6070;
+  --text-mid:  #7a9ab0;
+  --mono:      'Space Mono', monospace;
+  --sans:      'DM Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+/* ── HEADER ─────────────────────────────── */
+header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 44px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surf);
+}
+
+.header-logo {
+  padding: 0 20px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-right: 1px solid var(--border);
+}
+
+.logo-mark {
+  width: 28px; height: 28px;
+  background: var(--accent);
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 700;
+  color: var(--bg);
+  font-family: var(--mono);
+}
+
+.logo-text {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.logo-text span { color: var(--accent); }
+
+.header-steps {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  padding: 0 20px;
+  gap: 0;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  font-size: 11px;
+  color: var(--text-dim);
+  border-right: 1px solid var(--border);
+  font-family: var(--mono);
+  transition: color 0.2s;
+  white-space: nowrap;
+}
+.step.active { color: var(--accent); }
+.step.done { color: var(--green); }
+.step-num {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  display: grid; place-items: center;
+  font-size: 9px;
+  flex-shrink: 0;
+}
+.step.done .step-num { background: var(--green); border-color: var(--green); color: var(--bg); }
+.step.active .step-num { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+
+.header-right {
+  margin-left: auto;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cv-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: rgba(255,69,96,0.15);
+  color: var(--red);
+  border: 1px solid rgba(255,69,96,0.3);
+  letter-spacing: 1px;
+  transition: all 0.3s;
+}
+.cv-badge.ready {
+  background: rgba(0,229,160,0.1);
+  color: var(--green);
+  border-color: rgba(0,229,160,0.3);
+}
+
+/* ── LAYOUT ──────────────────────────────── */
+.workspace {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr 280px;
+  grid-template-rows: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.pane {
+  background: var(--surf);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.pane-video  { grid-column: 1; grid-row: 1; }
+.pane-graph  { grid-column: 1 / 3; grid-row: 2; }
+.pane-ctrl   { grid-column: 2; grid-row: 1; }
+.pane-side   { grid-column: 3; grid-row: 1 / 3; border-left: 1px solid var(--border); }
+
+/* ── PANE HEADER ────────────────────────── */
+.pane-top {
+  flex-shrink: 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surf2);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.pane-top .dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--border2);
+}
+.pane-top .dot.accent { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.pane-top .dot.green  { background: var(--green);  box-shadow: 0 0 6px var(--green); }
+.pane-top .dot.amber  { background: var(--amber);  box-shadow: 0 0 6px var(--amber); }
+.pane-top .dot.red    { background: var(--red);    box-shadow: 0 0 6px var(--red); }
+
+.pane-top-right {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  font-family: var(--sans);
+}
+
+/* ── VIDEO PANE ─────────────────────────── */
+.video-body {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: radial-gradient(ellipse at center, #0a1015 0%, var(--bg) 100%);
+}
+
+#videoCanvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  cursor: crosshair;
+  image-rendering: pixelated;
+}
+
+.drop-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-dim);
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+.drop-hint-icon {
+  width: 56px; height: 56px;
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  display: grid; place-items: center;
+  font-size: 24px;
+  background: var(--surf2);
+}
+
+.drop-hint-text { font-size: 12px; text-align: center; line-height: 1.8; }
+.drop-hint-text strong { color: var(--text-mid); display: block; margin-bottom: 4px; }
+
+/* ── CONTROLS PANE ──────────────────────── */
+.ctrl-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ctrl-section { display: flex; flex-direction: column; gap: 8px; }
+.ctrl-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.btn-file {
+  position: relative;
+  overflow: hidden;
+}
+.btn-file input[type=file] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 9px 14px;
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  background: var(--surf2);
+  color: var(--text-mid);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: rgba(0,200,255,0.05); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.btn-accent {
+  background: rgba(0,200,255,0.1);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.btn-accent:hover:not(:disabled) { background: rgba(0,200,255,0.2); }
+.btn-accent:disabled { background: var(--surf2); border-color: var(--border2); }
+
+.btn-track {
+  background: rgba(0,229,160,0.1);
+  border-color: var(--green);
+  color: var(--green);
+  padding: 11px;
+  font-size: 12px;
+}
+.btn-track:hover:not(:disabled) { background: rgba(0,229,160,0.2); }
+.btn-track:disabled { background: var(--surf2); border-color: var(--border2); color: var(--text-dim); }
+
+/* Component selector */
+.comp-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+}
+.comp-btn {
+  padding: 7px;
+  background: var(--surf2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  text-align: center;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  transition: all 0.15s;
+  letter-spacing: 1px;
+}
+.comp-btn:hover { border-color: var(--border2); color: var(--text-mid); }
+.comp-btn.active { background: rgba(0,200,255,0.1); border-color: var(--accent); color: var(--accent); }
+
+/* Progress */
+.progress-wrap { display: none; }
+.progress-bar {
+  width: 100%; height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--green));
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.15s;
+}
+.progress-txt {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  margin-top: 5px;
+  letter-spacing: 0.5px;
+}
+
+/* Info box */
+.info-msg {
+  background: var(--surf2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--text-mid);
+  line-height: 1.7;
+  min-height: 54px;
+}
+.info-msg.warn { border-color: rgba(255,179,64,0.4); color: var(--amber); }
+
+/* Point coords display */
+.coord-display {
+  background: var(--surf3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  display: flex;
+  gap: 12px;
+}
+.coord-val { color: var(--text-mid); }
+.coord-val span { color: var(--accent); }
+
+/* ── GRAPH PANE ─────────────────────────── */
+.graph-body {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+#graphCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.graph-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+/* ── RESULTS PANE ───────────────────────── */
+.side-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.result-block {
+  background: var(--surf2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.result-block::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px 0 0 2px;
+}
+.result-block.green::before { background: var(--green); }
+.result-block.amber::before { background: var(--amber); }
+.result-block.red::before   { background: var(--red); }
+
+.result-lbl {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.result-val {
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+}
+.result-val.green { color: var(--green); }
+.result-val.amber { color: var(--amber); }
+
+.result-unit {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+
+.result-sub {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  font-family: var(--mono);
+}
+
+.method-tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  padding: 2px 6px;
+  background: rgba(0,200,255,0.1);
+  border: 1px solid rgba(0,200,255,0.25);
+  border-radius: 2px;
+  color: var(--accent);
+  margin-top: 6px;
+  text-transform: uppercase;
+}
+.method-tag.green {
+  background: rgba(0,229,160,0.1);
+  border-color: rgba(0,229,160,0.25);
+  color: var(--green);
+}
+
+.window-block {
+  background: var(--surf2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  line-height: 2;
+  letter-spacing: 0.5px;
+}
+.window-block .wval { color: var(--text-mid); }
+
+.spectrum-block {
+  background: var(--surf2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px 12px;
+}
+.spectrum-title {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+#spectrumCanvas {
+  width: 100%;
+  height: 90px;
+  display: block;
+  border-radius: 2px;
+}
+
+.no-results {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-align: center;
+  padding: 30px 10px;
+  line-height: 1.8;
+}
+.no-results-icon { font-size: 28px; opacity: 0.4; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* Tooltip-style crosshair label on video */
+#ptLabel {
+  position: absolute;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  padding: 2px 7px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+  display: none;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+</style>
+</head>
+<body>
+
+<!-- ─── HEADER ─────────────────────────────────────────── -->
+<header>
+  <div class="header-logo">
+    <div class="logo-mark">VT</div>
+    <div class="logo-text">Vibration <span>Tracker</span></div>
+  </div>
+  <div class="header-steps">
+    <div class="step" id="step1"><div class="step-num">1</div> Load Video</div>
+    <div class="step" id="step2"><div class="step-num">2</div> Select Feature</div>
+    <div class="step" id="step3"><div class="step-num">3</div> Track</div>
+    <div class="step" id="step4"><div class="step-num">4</div> Analyze</div>
+  </div>
+  <div class="header-right">
+    <div class="cv-badge" id="cvBadge">CV LOADING</div>
+  </div>
+</header>
+
+<!-- ─── WORKSPACE ──────────────────────────────────────── -->
+<div class="workspace">
+
+  <!-- Video Pane -->
+  <div class="pane pane-video">
+    <div class="pane-top">
+      <div class="dot" id="videoDot"></div>
+      Video Frame
+      <div class="pane-top-right" id="videoDimLabel"></div>
+    </div>
+    <div class="video-body" id="videoBody">
+      <div class="drop-hint" id="dropHint">
+        <div class="drop-hint-icon">🎬</div>
+        <div class="drop-hint-text">
+          <strong>Load a video file</strong>
+          Use the controls panel →
+        </div>
+      </div>
+      <canvas id="videoCanvas"></canvas>
+      <div id="ptLabel"></div>
+    </div>
+  </div>
+
+  <!-- Graph Pane -->
+  <div class="pane pane-graph">
+    <div class="pane-top">
+      <div class="dot" id="graphDot"></div>
+      Displacement vs Time
+      <div class="pane-top-right">Drag <span style="color:var(--green)">▎S</span> and <span style="color:var(--red)">E▎</span> markers to select analysis window</div>
+    </div>
+    <div class="graph-body">
+      <div class="graph-overlay" id="graphOverlay">
+        <span style="font-size:24px;opacity:0.3">📈</span>
+        <span>Track a feature to see displacement data</span>
+      </div>
+      <canvas id="graphCanvas"></canvas>
+    </div>
+  </div>
+
+  <!-- Controls Pane -->
+  <div class="pane pane-ctrl">
+    <div class="pane-top">
+      <div class="dot accent"></div>
+      Controls
+    </div>
+    <div class="ctrl-body">
+
+      <div class="ctrl-section">
+        <div class="ctrl-label">01 — Video Source</div>
+        <div class="btn-file btn">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zM7 5h2v3h3v2h-3v3H7v-3H4V8h3V5z"/></svg>
+          Open Video File
+          <input type="file" id="videoFileInput" accept="video/*">
+        </div>
+        <div class="coord-display" id="coordDisplay" style="display:none">
+          <span>X: <span class="coord-val" id="coordX">—</span></span>
+          <span>Y: <span class="coord-val" id="coordY">—</span></span>
+          <span>Frame: <span class="coord-val" id="coordF">—</span></span>
+        </div>
+      </div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-label">02 — Track Component</div>
+        <div class="comp-group">
+          <div class="comp-btn" data-comp="x" onclick="selectComponent('x')">X</div>
+          <div class="comp-btn active" data-comp="y" onclick="selectComponent('y')">Y</div>
+          <div class="comp-btn" data-comp="mag" onclick="selectComponent('mag')">MAG</div>
+        </div>
+      </div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-label">03 — Track</div>
+        <button class="btn btn-track" id="trackBtn" disabled onclick="startTracking()">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2l11 6-11 6V2z"/></svg>
+          Run Optical Flow
+        </button>
+        <div class="progress-wrap" id="progressWrap">
+          <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+          <div class="progress-txt" id="progressTxt">Initializing…</div>
+        </div>
+      </div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-label">Status</div>
+        <div class="info-msg" id="infoMsg">
+          Load a video file, then click on the frame to select a feature to track.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Results Pane -->
+  <div class="pane pane-side">
+    <div class="pane-top">
+      <div class="dot green" id="resultsDot"></div>
+      Analysis Results
+    </div>
+    <div class="side-body" id="sideBody">
+      <div class="no-results">
+        <div class="no-results-icon">⚛</div>
+        Track a feature and select an<br>analysis window on the graph<br>to see results here.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Hidden video element -->
+<video id="hiddenVideo" preload="auto" style="display:none"></video>
+
+<!-- OpenCV.js — Module must be set BEFORE script loads -->
+<script>
+// Tell OpenCV.js to call us when WASM is ready
+var Module = {
+  onRuntimeInitialized() {
+    state.cvReady = true;
+    document.getElementById('cvBadge').textContent = 'CV READY';
+    document.getElementById('cvBadge').classList.add('ready');
+    updateTrackBtn();
+  }
+};
+</script>
+<script async src="https://docs.opencv.org/4.8.0/opencv.js"></script>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════
+const state = {
+  cvReady:       false,
+  videoLoaded:   false,
+  videoW:        0,
+  videoH:        0,
+  fps:           30,
+  duration:      0,
+  selectedPt:    null,   // {x, y} video-native coords
+  tracking:      false,
+  trackingData:  [],     // [{t, x, y, dx, dy}]
+  component:     'y',
+  markerStart:   0.1,
+  markerEnd:     0.9,
+  dragging:      null,
+  result:        null,
+};
+
+// ══════════════════════════════════════════════════════════
+//  DOM REFS
+// ══════════════════════════════════════════════════════════
+const videoEl    = document.getElementById('hiddenVideo');
+const vCanvas    = document.getElementById('videoCanvas');
+const vCtx       = vCanvas.getContext('2d');
+const gCanvas    = document.getElementById('graphCanvas');
+const gCtx       = gCanvas.getContext('2d');
+const procCanvas = document.createElement('canvas');
+const procCtx    = procCanvas.getContext('2d', { willReadFrequently: true });
+
+// ══════════════════════════════════════════════════════════
+//  STEP INDICATOR
+// ══════════════════════════════════════════════════════════
+function setStep(n) {
+  for (let i = 1; i <= 4; i++) {
+    const el = document.getElementById('step' + i);
+    el.classList.remove('active', 'done');
+    if (i < n)  el.classList.add('done');
+    if (i === n) el.classList.add('active');
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  VIDEO LOADING
+// ══════════════════════════════════════════════════════════
+document.getElementById('videoFileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  videoEl.src = url;
+  videoEl.onloadedmetadata = () => {
+    state.duration = videoEl.duration;
+    state.videoW   = videoEl.videoWidth;
+    state.videoH   = videoEl.videoHeight;
+
+    // Seek to first frame
+    const onFirstSeek = () => {
+      videoEl.removeEventListener('seeked', onFirstSeek);
+      state.videoLoaded  = true;
+      state.trackingData = [];
+      state.selectedPt   = null;
+      state.result       = null;
+
+      procCanvas.width  = state.videoW;
+      procCanvas.height = state.videoH;
+
+      fitVideoCanvas();
+      renderVideoFrame();
+
+      document.getElementById('dropHint').style.display = 'none';
+      document.getElementById('videoDot').classList.add('accent');
+      document.getElementById('videoDimLabel').textContent =
+        state.videoW + '×' + state.videoH + ' · ' + state.duration.toFixed(2) + 's';
+      document.getElementById('coordDisplay').style.display = 'flex';
+      setMsg('Click on the video frame to select a feature to track.');
+      setStep(2);
+      updateTrackBtn();
+    };
+    videoEl.addEventListener('seeked', onFirstSeek);
+    videoEl.currentTime = 0;
+  };
+});
+
+function fitVideoCanvas() {
+  const body = document.getElementById('videoBody');
+  const bw = body.clientWidth  - 4;
+  const bh = body.clientHeight - 4;
+  const scale = Math.min(bw / state.videoW, bh / state.videoH, 1);
+  vCanvas.width  = Math.floor(state.videoW  * scale);
+  vCanvas.height = Math.floor(state.videoH * scale);
+}
+
+function renderVideoFrame(highlightPt) {
+  vCtx.drawImage(videoEl, 0, 0, vCanvas.width, vCanvas.height);
+
+  const sx = vCanvas.width  / state.videoW;
+  const sy = vCanvas.height / state.videoH;
+
+  // Tracking path
+  if (state.trackingData.length > 1) {
+    vCtx.strokeStyle = 'rgba(0,200,255,0.45)';
+    vCtx.lineWidth = 1.5;
+    vCtx.beginPath();
+    state.trackingData.forEach((d, i) => {
+      const px = d.x * sx, py = d.y * sy;
+      i === 0 ? vCtx.moveTo(px, py) : vCtx.lineTo(px, py);
+    });
+    vCtx.stroke();
+  }
+
+  // Selected / tracked point
+  const pt = highlightPt || state.selectedPt;
+  if (pt) {
+    const px = pt.x * sx, py = pt.y * sy;
+
+    // Cross-hair lines
+    vCtx.strokeStyle = 'rgba(0,229,160,0.6)';
+    vCtx.lineWidth = 1;
+    const cl = 14;
+    vCtx.beginPath();
+    vCtx.moveTo(px - cl, py); vCtx.lineTo(px + cl, py);
+    vCtx.moveTo(px, py - cl); vCtx.lineTo(px, py + cl);
+    vCtx.stroke();
+
+    // Outer circle
+    vCtx.strokeStyle = state.trackingData.length > 1 ? 'rgba(0,200,255,0.8)' : 'rgba(0,229,160,0.8)';
+    vCtx.lineWidth = 1.5;
+    vCtx.beginPath();
+    vCtx.arc(px, py, 10, 0, Math.PI * 2);
+    vCtx.stroke();
+
+    // Center dot
+    vCtx.fillStyle = '#ff4560';
+    vCtx.beginPath();
+    vCtx.arc(px, py, 2.5, 0, Math.PI * 2);
+    vCtx.fill();
+  }
+}
+
+// Video canvas click → select feature
+vCanvas.addEventListener('click', (e) => {
+  if (!state.videoLoaded || state.tracking) return;
+  const r   = vCanvas.getBoundingClientRect();
+  const cx  = (e.clientX - r.left) * vCanvas.width  / r.width;
+  const cy  = (e.clientY - r.top)  * vCanvas.height / r.height;
+  const vx  = cx * state.videoW / vCanvas.width;
+  const vy  = cy * state.videoH / vCanvas.height;
+
+  state.selectedPt   = { x: vx, y: vy };
+  state.trackingData = [];
+  state.result       = null;
+
+  document.getElementById('coordX').textContent = Math.round(vx);
+  document.getElementById('coordY').textContent = Math.round(vy);
+  document.getElementById('coordF').textContent = '0';
+
+  renderVideoFrame();
+  updateTrackBtn();
+  updateResults();
+  clearGraph();
+  setMsg('Feature selected at (' + Math.round(vx) + ', ' + Math.round(vy) + '). Press "Run Optical Flow" to begin tracking.');
+  setStep(3);
+});
+
+// Crosshair label on hover
+vCanvas.addEventListener('mousemove', (e) => {
+  if (!state.videoLoaded) return;
+  const r  = vCanvas.getBoundingClientRect();
+  const cx = (e.clientX - r.left) * vCanvas.width  / r.width;
+  const cy = (e.clientY - r.top)  * vCanvas.height / r.height;
+  const lbl = document.getElementById('ptLabel');
+  lbl.style.display = 'block';
+  lbl.style.left = (e.clientX - r.left + 10) + 'px';
+  lbl.style.top  = (e.clientY - r.top  + 10) + 'px';
+  lbl.textContent = Math.round(cx * state.videoW / vCanvas.width) + ', ' +
+                    Math.round(cy * state.videoH / vCanvas.height);
+});
+vCanvas.addEventListener('mouseleave', () => {
+  document.getElementById('ptLabel').style.display = 'none';
+});
+
+// ══════════════════════════════════════════════════════════
+//  COMPONENT SELECTOR
+// ══════════════════════════════════════════════════════════
+function selectComponent(c) {
+  state.component = c;
+  document.querySelectorAll('.comp-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.comp === c));
+  if (state.trackingData.length) { renderGraph(); analyzeWindow(); }
+}
+
+// ══════════════════════════════════════════════════════════
+//  TRACKING ENGINE
+// ══════════════════════════════════════════════════════════
+function updateTrackBtn() {
+  const btn = document.getElementById('trackBtn');
+  btn.disabled = !state.videoLoaded || !state.selectedPt || !state.cvReady || state.tracking;
+}
+
+function setMsg(txt, warn = false) {
+  const el = document.getElementById('infoMsg');
+  el.textContent = txt;
+  el.classList.toggle('warn', warn);
+}
+
+async function startTracking() {
+  if (!state.selectedPt || !state.cvReady) return;
+  state.tracking     = true;
+  state.trackingData = [];
+  state.result       = null;
+  updateTrackBtn();
+  updateResults();
+  clearGraph();
+  document.getElementById('progressWrap').style.display = 'block';
+  setMsg('Tracking… please wait.');
+
+  try {
+    await doTrack();
+  } catch (err) {
+    console.error(err);
+    setMsg('Tracking error: ' + err.message, true);
+  }
+
+  state.tracking = false;
+  updateTrackBtn();
+  document.getElementById('progressWrap').style.display = 'none';
+
+  if (state.trackingData.length > 4) {
+    // Seek video back to start for display
+    await seekTo(0);
+    renderVideoFrame();
+    state.markerStart = 0.05;
+    state.markerEnd   = 0.95;
+    renderGraph();
+    analyzeWindow();
+    setMsg('Tracked ' + state.trackingData.length + ' frames. Drag the green/red markers on the graph to select the analysis window.');
+    setStep(4);
+    document.getElementById('graphDot').classList.add('green');
+    document.getElementById('graphOverlay').style.display = 'none';
+  } else {
+    setMsg('Tracking produced too few frames. Try a different feature or video.', true);
+  }
+}
+
+function seekTo(t) {
+  return new Promise(resolve => {
+    const h = () => { videoEl.removeEventListener('seeked', h); resolve(); };
+    videoEl.addEventListener('seeked', h);
+    videoEl.currentTime = t;
+  });
+}
+
+async function doTrack() {
+  const { videoW: W, videoH: H } = state;
+  let px = state.selectedPt.x, py = state.selectedPt.y;
+  const x0 = px, y0 = py;
+
+  // Sample rate: target up to 600 frames
+  const MAX_FRAMES = 600;
+  const nFrames    = Math.min(MAX_FRAMES, Math.floor(state.duration * 60));
+  const dt         = state.duration / nFrames;
+  state.fps        = 1 / dt;
+
+  let prevGray = null;
+
+  for (let i = 0; i < nFrames; i++) {
+    const t = i * dt;
+    await seekTo(t);
+
+    procCtx.drawImage(videoEl, 0, 0, W, H);
+    const imgData = procCtx.getImageData(0, 0, W, H);
+
+    let src     = cv.matFromImageData(imgData);
+    let curGray = new cv.Mat();
+    cv.cvtColor(src, curGray, cv.COLOR_RGBA2GRAY);
+    src.delete();
+
+    if (i === 0) {
+      state.trackingData.push({ t, x: px, y: py, dx: 0, dy: 0 });
+      prevGray = curGray;
+    } else {
+      let prevPts = cv.matFromArray(1, 1, cv.CV_32FC2, [px, py]);
+      let nextPts = new cv.Mat();
+      let status  = new cv.Mat();
+      let errMat  = new cv.Mat();
+
+      try {
+        cv.calcOpticalFlowPyrLK(prevGray, curGray, prevPts, nextPts, status, errMat);
+        if (status.data[0] === 1) {
+          px = nextPts.data32F[0];
+          py = nextPts.data32F[1];
+        }
+      } catch (_) {}
+
+      prevPts.delete(); nextPts.delete(); status.delete(); errMat.delete();
+      prevGray.delete();
+      prevGray = curGray;
+
+      state.trackingData.push({ t, x: px, y: py, dx: px - x0, dy: py - y0 });
+    }
+
+    // Progress
+    const pct = (i + 1) / nFrames;
+    document.getElementById('progressFill').style.width = (pct * 100) + '%';
+    document.getElementById('progressTxt').textContent =
+      'Frame ' + (i + 1) + ' / ' + nFrames + ' (' + Math.round(pct * 100) + '%)';
+
+    // Live video update
+    if (i % 6 === 0) {
+      const curPt = { x: px, y: py };
+      renderVideoFrame(curPt);
+      document.getElementById('coordX').textContent = Math.round(px);
+      document.getElementById('coordY').textContent = Math.round(py);
+      document.getElementById('coordF').textContent = i;
+    }
+
+    // Yield every 15 frames
+    if (i % 15 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+
+  if (prevGray) prevGray.delete();
+}
+
+// ══════════════════════════════════════════════════════════
+//  GRAPH
+// ══════════════════════════════════════════════════════════
+const PAD = { l: 52, r: 18, t: 14, b: 36 };
+
+function getSignal() {
+  return state.trackingData.map(d => {
+    if (state.component === 'x')   return d.dx;
+    if (state.component === 'y')   return d.dy;
+    return Math.sqrt(d.dx * d.dx + d.dy * d.dy);
+  });
+}
+
+function clearGraph() {
+  const body = document.querySelector('.graph-body');
+  gCanvas.width  = body.clientWidth;
+  gCanvas.height = body.clientHeight;
+  gCtx.fillStyle = '#080c10';
+  gCtx.fillRect(0, 0, gCanvas.width, gCanvas.height);
+  document.getElementById('graphOverlay').style.display = 'flex';
+}
+
+function renderGraph() {
+  const body = document.querySelector('.graph-body');
+  gCanvas.width  = body.clientWidth;
+  gCanvas.height = body.clientHeight;
+
+  const W = gCanvas.width, H = gCanvas.height;
+  const { l: pl, r: pr, t: pt, b: pb } = PAD;
+  const pw = W - pl - pr, ph = H - pt - pb;
+
+  gCtx.fillStyle = '#080c10';
+  gCtx.fillRect(0, 0, W, H);
+
+  const sig   = getSignal();
+  if (!sig.length) return;
+
+  const times = state.trackingData.map(d => d.t);
+  const tMin  = times[0], tMax = times[times.length - 1];
+  const sMin  = Math.min(...sig), sMax = Math.max(...sig);
+  const sSpan = sMax - sMin || 1;
+  const sPad  = sSpan * 0.12;
+  const sLo   = sMin - sPad, sHi = sMax + sPad;
+
+  const toX = t => pl + (t - tMin) / (tMax - tMin) * pw;
+  const toY = s => pt + (1 - (s - sLo) / (sHi - sLo)) * ph;
+
+  // Store for hit-testing
+  gCanvas._tx = { toX, tMin, tMax, pl, pr, pt, pb, pw, ph, W, H };
+
+  // Grid
+  const ngy = 5, ngx = 8;
+  gCtx.strokeStyle = '#131a21';
+  gCtx.lineWidth   = 1;
+  gCtx.fillStyle   = '#4a6070';
+  gCtx.font        = '9px "Space Mono", monospace';
+
+  // H-grid + Y labels
+  gCtx.textAlign = 'right';
+  for (let i = 0; i <= ngy; i++) {
+    const s = sLo + (sHi - sLo) * i / ngy;
+    const y = toY(s);
+    gCtx.beginPath(); gCtx.moveTo(pl, y); gCtx.lineTo(W - pr, y); gCtx.stroke();
+    gCtx.fillText(s.toFixed(1), pl - 5, y + 3);
+  }
+
+  // V-grid + X labels
+  gCtx.textAlign = 'center';
+  for (let i = 0; i <= ngx; i++) {
+    const t = tMin + (tMax - tMin) * i / ngx;
+    const x = toX(t);
+    gCtx.beginPath(); gCtx.moveTo(x, pt); gCtx.lineTo(x, H - pb); gCtx.stroke();
+    gCtx.fillText(t.toFixed(2) + 's', x, H - pb + 12);
+  }
+
+  // Axis labels
+  gCtx.fillStyle = '#4a6070';
+  gCtx.font      = '9px "DM Sans", sans-serif';
+  gCtx.textAlign = 'center';
+  gCtx.fillText('Time (s)', pl + pw / 2, H - 4);
+  gCtx.save();
+  gCtx.translate(12, pt + ph / 2);
+  gCtx.rotate(-Math.PI / 2);
+  const yLbl = state.component === 'x' ? 'X Offset (px)' :
+               state.component === 'y' ? 'Y Offset (px)' : 'Magnitude (px)';
+  gCtx.fillText(yLbl, 0, 0);
+  gCtx.restore();
+
+  // Selection shading
+  const sx0 = toX(tMin + state.markerStart * (tMax - tMin));
+  const sx1 = toX(tMin + state.markerEnd   * (tMax - tMin));
+  gCtx.fillStyle = 'rgba(0,200,255,0.06)';
+  gCtx.fillRect(sx0, pt, sx1 - sx0, ph);
+
+  // Zero line
+  if (sLo < 0 && sHi > 0) {
+    gCtx.strokeStyle = 'rgba(255,255,255,0.08)';
+    gCtx.setLineDash([4, 6]);
+    gCtx.lineWidth = 1;
+    gCtx.beginPath(); gCtx.moveTo(pl, toY(0)); gCtx.lineTo(W - pr, toY(0)); gCtx.stroke();
+    gCtx.setLineDash([]);
+  }
+
+  // Signal
+  gCtx.strokeStyle = '#00c8ff';
+  gCtx.lineWidth   = 1.5;
+  gCtx.shadowColor = 'rgba(0,200,255,0.25)';
+  gCtx.shadowBlur  = 4;
+  gCtx.beginPath();
+  sig.forEach((s, i) => {
+    const x = toX(times[i]), y = toY(s);
+    i === 0 ? gCtx.moveTo(x, y) : gCtx.lineTo(x, y);
+  });
+  gCtx.stroke();
+  gCtx.shadowBlur = 0;
+
+  // Markers
+  drawMarker(sx0, 'S', '#00e5a0', pt, H - pb);
+  drawMarker(sx1, 'E', '#ff4560', pt, H - pb);
+
+  // Plot border
+  gCtx.strokeStyle = '#1e2d3d';
+  gCtx.lineWidth   = 1;
+  gCtx.strokeRect(pl, pt, pw, ph);
+}
+
+function drawMarker(x, label, color, yTop, yBot) {
+  gCtx.strokeStyle = color;
+  gCtx.lineWidth   = 1.5;
+  gCtx.setLineDash([5, 4]);
+  gCtx.beginPath(); gCtx.moveTo(x, yTop); gCtx.lineTo(x, yBot); gCtx.stroke();
+  gCtx.setLineDash([]);
+
+  // Handle
+  gCtx.fillStyle = color;
+  gCtx.shadowColor = color;
+  gCtx.shadowBlur  = 8;
+  gCtx.beginPath(); gCtx.arc(x, yTop + 9, 8, 0, Math.PI * 2); gCtx.fill();
+  gCtx.shadowBlur = 0;
+
+  gCtx.fillStyle   = '#080c10';
+  gCtx.font        = 'bold 8px "Space Mono", monospace';
+  gCtx.textAlign   = 'center';
+  gCtx.fillText(label, x, yTop + 13);
+}
+
+// Graph interaction
+function markerX(norm) {
+  const tx = gCanvas._tx;
+  if (!tx) return -1;
+  return tx.toX(tx.tMin + norm * (tx.tMax - tx.tMin));
+}
+
+function normFromX(x) {
+  const tx = gCanvas._tx;
+  if (!tx) return 0;
+  return Math.max(0, Math.min(1, (x - tx.pl) / tx.pw));
+}
+
+gCanvas.addEventListener('mousedown', e => {
+  if (!gCanvas._tx || !state.trackingData.length) return;
+  const r  = gCanvas.getBoundingClientRect();
+  const cx = (e.clientX - r.left) * gCanvas.width / r.width;
+  const ds = Math.abs(cx - markerX(state.markerStart));
+  const de = Math.abs(cx - markerX(state.markerEnd));
+  if (ds < 12) state.dragging = 'start';
+  else if (de < 12) state.dragging = 'end';
+});
+
+gCanvas.addEventListener('mousemove', e => {
+  if (!gCanvas._tx) return;
+  const r  = gCanvas.getBoundingClientRect();
+  const cx = (e.clientX - r.left) * gCanvas.width / r.width;
+
+  if (!state.dragging) {
+    const ds = Math.abs(cx - markerX(state.markerStart));
+    const de = Math.abs(cx - markerX(state.markerEnd));
+    gCanvas.style.cursor = (ds < 12 || de < 12) ? 'ew-resize' : 'default';
+    return;
+  }
+
+  const n = normFromX(cx);
+  if (state.dragging === 'start') state.markerStart = Math.min(n, state.markerEnd - 0.04);
+  else                            state.markerEnd   = Math.max(n, state.markerStart + 0.04);
+
+  renderGraph();
+  analyzeWindow();
+});
+
+gCanvas.addEventListener('mouseup',    () => { state.dragging = null; });
+gCanvas.addEventListener('mouseleave', () => { state.dragging = null; });
+
+// ══════════════════════════════════════════════════════════
+//  SIGNAL PROCESSING
+// ══════════════════════════════════════════════════════════
+
+// Cooley-Tukey radix-2 FFT (in-place)
+function fft(re, im) {
+  const N = re.length;
+  // Bit-reversal permutation
+  let j = 0;
+  for (let i = 1; i < N; i++) {
+    let bit = N >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      [re[i], re[j]] = [re[j], re[i]];
+      [im[i], im[j]] = [im[j], im[i]];
+    }
+  }
+  // DFT stages
+  for (let len = 2; len <= N; len <<= 1) {
+    const ang = -2 * Math.PI / len;
+    const wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < N; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const ur = re[i+k],      ui = im[i+k];
+        const vr = re[i+k+len/2]*cr - im[i+k+len/2]*ci;
+        const vi = re[i+k+len/2]*ci + im[i+k+len/2]*cr;
+        re[i+k]         = ur + vr; im[i+k]         = ui + vi;
+        re[i+k+len/2]   = ur - vr; im[i+k+len/2]   = ui - vi;
+        const nr = cr*wr - ci*wi; ci = cr*wi + ci*wr; cr = nr;
+      }
+    }
+  }
+}
+
+function computeSpectrum(signal) {
+  const N    = signal.length;
+  const Nfft = Math.pow(2, Math.ceil(Math.log2(Math.max(N, 8))));
+  const re   = new Float64Array(Nfft);
+  const im   = new Float64Array(Nfft);
+
+  // Hann window
+  for (let i = 0; i < N; i++) {
+    const w = 0.5 * (1 - Math.cos(2 * Math.PI * i / (N - 1)));
+    re[i] = signal[i] * w;
+  }
+
+  fft(re, im);
+
+  const half = Nfft / 2 + 1;
+  const mag  = new Float64Array(half);
+  for (let i = 0; i < half; i++) {
+    mag[i] = Math.sqrt(re[i]*re[i] + im[i]*im[i]) / N;
+    if (i > 0 && i < half - 1) mag[i] *= 2;
+  }
+  return { mag, Nfft };
+}
+
+function findPeaks(sig, minDist) {
+  const peaks = [];
+  for (let i = 1; i < sig.length - 1; i++) {
+    if (sig[i] >= sig[i-1] && sig[i] > sig[i+1]) {
+      if (!peaks.length || i - peaks[peaks.length-1].i > minDist) {
+        peaks.push({ i, v: sig[i] });
+      } else if (sig[i] > peaks[peaks.length-1].v) {
+        peaks[peaks.length-1] = { i, v: sig[i] };
+      }
+    }
+  }
+  return peaks;
+}
+
+function analyzeWindow() {
+  if (!state.trackingData.length) return;
+
+  const times  = state.trackingData.map(d => d.t);
+  const tMin   = times[0], tMax = times[times.length - 1];
+  const t0     = tMin + state.markerStart * (tMax - tMin);
+  const t1     = tMin + state.markerEnd   * (tMax - tMin);
+  const window = state.trackingData.filter(d => d.t >= t0 && d.t <= t1);
+
+  if (window.length < 8) { state.result = null; updateResults(); return; }
+
+  const raw = window.map(d =>
+    state.component === 'x'   ? d.dx :
+    state.component === 'y'   ? d.dy :
+    Math.sqrt(d.dx*d.dx + d.dy*d.dy));
+
+  // DC removal
+  const mean    = raw.reduce((a, b) => a + b, 0) / raw.length;
+  const sig     = raw.map(v => v - mean);
+  const winDur  = t1 - t0;
+  const fs      = (window.length - 1) / winDur;
+
+  // FFT
+  const { mag, Nfft } = computeSpectrum(sig);
+  const df = fs / Nfft;
+
+  // Find dominant peak (skip very low freqs)
+  const minF   = 0.3;           // Hz
+  let peakIdx  = Math.max(1, Math.ceil(minF / df));
+  let peakMag  = 0;
+  for (let i = peakIdx; i < mag.length; i++) {
+    if (mag[i] > peakMag) { peakMag = mag[i]; peakIdx = i; }
+  }
+  const fn = peakIdx * df;
+
+  // Half-power bandwidth
+  const hp   = peakMag / Math.SQRT2;
+  let f1i    = peakIdx, f2i = peakIdx;
+  for (let i = peakIdx; i >= 1; i--) { if (mag[i] <= hp) { f1i = i; break; } }
+  for (let i = peakIdx; i < mag.length; i++) { if (mag[i] <= hp) { f2i = i; break; } }
+  const zetaHP = Math.max(0, Math.min(0.99, (f2i - f1i) * df / (2 * fn)));
+
+  // Logarithmic decrement
+  let zetaLD = null, method = 'Half-Power Bandwidth';
+  const minPeakDist = Math.max(1, Math.floor(fs / fn / 2.5));
+  const peaks       = findPeaks(sig, minPeakDist);
+
+  // Use positive peaks only, sorted by value desc
+  const absPeaks = peaks.filter(p => p.v > 0).sort((a, b) => a.i - b.i);
+  if (absPeaks.length >= 3) {
+    const n   = absPeaks.length - 1;
+    const A1  = absPeaks[0].v;
+    const An  = absPeaks[n].v;
+    if (An > 0 && A1 > An) {
+      const delta = Math.log(A1 / An) / n;
+      zetaLD = Math.max(0, Math.min(0.99,
+        delta / Math.sqrt(4 * Math.PI * Math.PI + delta * delta)));
+      method = 'Logarithmic Decrement';
+    }
+  }
+
+  const zeta = zetaLD !== null ? zetaLD : zetaHP;
+  const Q    = zeta > 0 ? 1 / (2 * zeta) : 999;
+
+  state.result = {
+    fn, zeta, zetaHP, zetaLD, Q,
+    method, winDur, t0, t1,
+    mag, df, peakIdx, peakMag,
+    fs, n: window.length
+  };
+
+  document.getElementById('resultsDot').classList.add('green');
+  updateResults();
+}
+
+// ══════════════════════════════════════════════════════════
+//  RESULTS
+// ══════════════════════════════════════════════════════════
+function updateResults() {
+  const el = document.getElementById('sideBody');
+  const r  = state.result;
+
+  if (!r) {
+    el.innerHTML = `
+      <div class="no-results">
+        <div class="no-results-icon">⚛</div>
+        Track a feature and drag the<br>analysis window markers<br>to see results here.
+      </div>`;
+    return;
+  }
+
+  const fnColor  = '#00c8ff';
+  const fnRad    = (r.fn * 2 * Math.PI).toFixed(3);
+  const zetaPct  = (r.zeta * 100).toFixed(3);
+  const zetaHPct = (r.zetaHP * 100).toFixed(3);
+  const isLD     = r.zetaLD !== null;
+
+  el.innerHTML = `
+    <div class="window-block">
+      <div>START &nbsp;<span class="wval">${r.t0.toFixed(4)} s</span></div>
+      <div>END &nbsp;&nbsp;<span class="wval">${r.t1.toFixed(4)} s</span></div>
+      <div>DUR &nbsp;&nbsp;<span class="wval">${r.winDur.toFixed(4)} s</span></div>
+      <div>N &nbsp;&nbsp;&nbsp;&nbsp;<span class="wval">${r.n} samples @ ${r.fs.toFixed(1)} Hz</span></div>
+    </div>
+
+    <div class="result-block">
+      <div class="result-lbl">Natural Frequency</div>
+      <div>
+        <span class="result-val">${r.fn.toFixed(3)}</span>
+        <span class="result-unit">Hz</span>
+      </div>
+      <div class="result-sub">${fnRad} rad/s &nbsp;·&nbsp; T = ${(1/r.fn).toFixed(4)} s</div>
+    </div>
+
+    <div class="result-block green">
+      <div class="result-lbl">Damping Ratio ζ</div>
+      <div>
+        <span class="result-val green">${zetaPct}</span>
+        <span class="result-unit">%</span>
+      </div>
+      <span class="method-tag ${isLD ? 'green' : ''}">${r.method}</span>
+      ${isLD ? `<div class="result-sub" style="margin-top:6px">Half-power check: ${zetaHPct}%</div>` : ''}
+    </div>
+
+    <div class="result-block amber">
+      <div class="result-lbl">Quality Factor Q</div>
+      <div>
+        <span class="result-val amber">${r.Q.toFixed(2)}</span>
+      </div>
+      <div class="result-sub">Q = 1 / (2ζ)</div>
+    </div>
+
+    <div class="spectrum-block">
+      <div class="spectrum-title">FFT Spectrum</div>
+      <canvas id="spectrumCanvas"></canvas>
+    </div>`;
+
+  requestAnimationFrame(() => drawSpectrum(r));
+}
+
+function drawSpectrum(r) {
+  const canvas = document.getElementById('spectrumCanvas');
+  if (!canvas) return;
+  const dpr  = window.devicePixelRatio || 1;
+  const cssW = canvas.offsetWidth;
+  const cssH = 90;
+  canvas.width  = cssW * dpr;
+  canvas.height = cssH * dpr;
+  canvas.style.width  = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = cssW, H = cssH;
+
+  ctx.fillStyle = '#080c10';
+  ctx.fillRect(0, 0, W, H);
+
+  const maxF   = Math.min(r.fs / 2, Math.max(r.fn * 5, 10));
+  const maxIdx = Math.min(Math.floor(maxF / r.df), r.mag.length - 1);
+  const slice  = Array.from(r.mag.slice(0, maxIdx + 1));
+  const maxM   = Math.max(...slice, 1e-10);
+
+  const pad = { l: 4, r: 4, t: 8, b: 18 };
+  const pw  = W - pad.l - pad.r;
+  const ph  = H - pad.t - pad.b;
+  const bw  = pw / slice.length;
+
+  // Bars
+  slice.forEach((m, i) => {
+    const x  = pad.l + i * bw;
+    const bh = (m / maxM) * ph;
+    const f  = i * r.df;
+    const near = Math.abs(f - r.fn) < r.df * 2.5;
+    ctx.fillStyle = near ? 'rgba(0,200,255,0.7)' : 'rgba(0,40,70,0.9)';
+    ctx.fillRect(x, pad.t + ph - bh, Math.max(1, bw - 0.5), bh);
+  });
+
+  // Peak marker
+  const px = pad.l + r.peakIdx * bw + bw / 2;
+  ctx.strokeStyle = 'rgba(255,69,96,0.85)';
+  ctx.lineWidth   = 1.5;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(px, pad.t); ctx.lineTo(px, pad.t + ph); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels
+  ctx.fillStyle = '#4a6070';
+  ctx.font      = '8px "Space Mono", monospace';
+  ctx.textAlign = 'left';  ctx.fillText('0', pad.l, H - 4);
+  ctx.textAlign = 'right'; ctx.fillText(maxF.toFixed(1) + ' Hz', W - pad.r, H - 4);
+  ctx.fillStyle = '#ff4560';
+  ctx.textAlign = 'center';
+  const lblX = Math.max(20, Math.min(W - 20, px));
+  ctx.fillText(r.fn.toFixed(2) + 'Hz', lblX, pad.t - 1);
+}
+
+// ══════════════════════════════════════════════════════════
+//  RESIZE
+// ══════════════════════════════════════════════════════════
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (state.videoLoaded) { fitVideoCanvas(); renderVideoFrame(); }
+    if (state.trackingData.length) renderGraph();
+    else clearGraph();
+  }, 80);
+});
+
+// ── Init ──────────────────────────────────────────────────
+setStep(1);
+clearGraph();
+</script>
+</body>
+</html>
