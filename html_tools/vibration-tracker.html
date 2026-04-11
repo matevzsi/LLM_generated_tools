@@ -560,6 +560,124 @@ header {
   letter-spacing: 1px;
   white-space: nowrap;
 }
+
+/* ══════════════════════════════════════════
+   MOBILE TAB BAR  (hidden on desktop)
+══════════════════════════════════════════ */
+.tab-bar { display: none; }
+
+@media (max-width: 767px) {
+
+  /* ── Compact header ─────────────────── */
+  .header-steps    { display: none; }
+  .header-logo     { border-right: none; padding: 0 14px; }
+  .logo-text       { font-size: 11px; letter-spacing: 2px; }
+  .pane-top-right  { display: none; }
+
+  /* ── Workspace becomes a positioned block ── */
+  .workspace {
+    display: block;
+    position: relative;
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  /* All panes fill the workspace, hidden by default */
+  .pane {
+    position: absolute !important;
+    inset: 0 !important;
+    display: none !important;
+    grid-column: unset !important;
+    grid-row: unset !important;
+    border: none !important;
+  }
+
+  /* Only the active tab's pane is visible */
+  .pane.tab-active { display: flex !important; }
+
+  /* ── Tab bar ────────────────────────── */
+  .tab-bar {
+    display: flex;
+    flex-shrink: 0;
+    height: 58px;
+    background: var(--surf);
+    border-top: 1px solid var(--border);
+    position: relative;
+    z-index: 10;
+  }
+
+  .tab-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color 0.15s;
+    padding: 6px 0 0;
+    position: relative;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Top accent bar */
+  .tab-btn::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 18%; right: 18%;
+    height: 2px;
+    background: currentColor;
+    border-radius: 0 0 2px 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .tab-btn.active       { color: var(--accent); }
+  .tab-btn.active::after { opacity: 1; }
+  .tab-btn.done         { color: var(--green); }
+  .tab-btn.done::after  { opacity: 0.5; }
+
+  /* Badge dot on tab icon when there's new content */
+  .tab-btn .tab-badge {
+    position: absolute;
+    top: 7px; right: calc(50% - 14px);
+    width: 6px; height: 6px;
+    background: var(--red);
+    border-radius: 50%;
+    border: 1px solid var(--surf);
+    display: none;
+  }
+  .tab-btn.has-badge .tab-badge { display: block; }
+
+  /* Tab icon */
+  .tab-icon {
+    font-size: 19px;
+    line-height: 1;
+    position: relative;
+  }
+
+  /* ── Controls pane scrolls on mobile ─ */
+  .ctrl-body { padding: 14px; gap: 12px; }
+
+  /* ── Graph body full height ─────────── */
+  .graph-body canvas { width: 100%; height: 100%; }
+
+  /* ── Side body padding ──────────────── */
+  .side-body { padding: 12px; gap: 8px; }
+
+  /* ── Result blocks compact ──────────── */
+  .result-val { font-size: 22px; }
+
+  /* ── Window block compact ───────────── */
+  .window-block { font-size: 9px; line-height: 1.8; }
+}
 </style>
 </head>
 <body>
@@ -585,7 +703,7 @@ header {
 <div class="workspace">
 
   <!-- Video Pane -->
-  <div class="pane pane-video">
+  <div class="pane pane-video tab-active" data-tab="video">
     <div class="pane-top">
       <div class="dot" id="videoDot"></div>
       Video Frame
@@ -605,7 +723,7 @@ header {
   </div>
 
   <!-- Graph Pane -->
-  <div class="pane pane-graph">
+  <div class="pane pane-graph" data-tab="graph">
     <div class="pane-top">
       <div class="dot" id="graphDot"></div>
       Displacement vs Time
@@ -621,7 +739,7 @@ header {
   </div>
 
   <!-- Controls Pane -->
-  <div class="pane pane-ctrl">
+  <div class="pane pane-ctrl" data-tab="controls">
     <div class="pane-top">
       <div class="dot accent"></div>
       Controls
@@ -674,7 +792,7 @@ header {
   </div>
 
   <!-- Results Pane -->
-  <div class="pane pane-side">
+  <div class="pane pane-side" data-tab="results">
     <div class="pane-top">
       <div class="dot green" id="resultsDot"></div>
       Analysis Results
@@ -689,7 +807,34 @@ header {
 
 </div>
 
-<!-- Hidden video element -->
+<!-- ─── MOBILE TAB BAR ─────────────────────────────────── -->
+<nav class="tab-bar" id="tabBar">
+
+  <button class="tab-btn active" data-tab="video" id="tabVideo" onclick="switchTab('video')">
+    <div class="tab-badge"></div>
+    <div class="tab-icon">🎬</div>
+    <span>Video</span>
+  </button>
+
+  <button class="tab-btn" data-tab="controls" id="tabControls" onclick="switchTab('controls')">
+    <div class="tab-badge"></div>
+    <div class="tab-icon">⚙️</div>
+    <span>Controls</span>
+  </button>
+
+  <button class="tab-btn" data-tab="graph" id="tabGraph" onclick="switchTab('graph')">
+    <div class="tab-badge"></div>
+    <div class="tab-icon">📈</div>
+    <span>Graph</span>
+  </button>
+
+  <button class="tab-btn" data-tab="results" id="tabResults" onclick="switchTab('results')">
+    <div class="tab-badge"></div>
+    <div class="tab-icon">⚛️</div>
+    <span>Results</span>
+  </button>
+
+</nav>
 <video id="hiddenVideo" preload="auto" style="display:none"></video>
 
 <!-- OpenCV.js — Module must be set BEFORE script loads -->
@@ -750,6 +895,18 @@ function setStep(n) {
     if (i < n)  el.classList.add('done');
     if (i === n) el.classList.add('active');
   }
+  // Mobile: sync tab done/active styling with step progress
+  if (isMobile()) {
+    const tabMap = ['video', 'video', 'controls', 'graph', 'results'];
+    // Mark done tabs
+    const tabOrder = ['video', 'controls', 'graph', 'results'];
+    tabOrder.forEach((tab, idx) => {
+      const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+      if (!btn) return;
+      btn.classList.remove('done');
+      if (idx < n - 1) btn.classList.add('done');
+    });
+  }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -787,6 +944,8 @@ document.getElementById('videoFileInput').addEventListener('change', function(e)
       setMsg('Click on the video frame to select a feature to track.');
       setStep(2);
       updateTrackBtn();
+      // Mobile: jump to Video tab so user can tap the feature
+      if (isMobile()) switchTab('video');
     };
     videoEl.addEventListener('seeked', onFirstSeek);
     videoEl.currentTime = 0;
@@ -872,6 +1031,8 @@ vCanvas.addEventListener('click', (e) => {
   clearGraph();
   setMsg('Feature selected at (' + Math.round(vx) + ', ' + Math.round(vy) + '). Press "Run Optical Flow" to begin tracking.');
   setStep(3);
+  // Mobile: switch to Controls tab so user can hit Track
+  if (isMobile()) switchTab('controls');
 });
 
 // Crosshair label on hover
@@ -925,6 +1086,8 @@ async function startTracking() {
   clearGraph();
   document.getElementById('progressWrap').style.display = 'block';
   setMsg('Tracking… please wait.');
+  // Mobile: show Video pane so user sees tracking progress
+  if (isMobile()) switchTab('video');
 
   try {
     await doTrack();
@@ -949,6 +1112,8 @@ async function startTracking() {
     setStep(4);
     document.getElementById('graphDot').classList.add('green');
     document.getElementById('graphOverlay').style.display = 'none';
+    // Mobile: jump to Graph tab, badge Results
+    if (isMobile()) { switchTab('graph'); badgeTab('results'); }
   } else {
     setMsg('Tracking produced too few frames. Try a different feature or video.', true);
   }
@@ -1309,10 +1474,40 @@ gCanvas.addEventListener('mousemove', e => {
 
   renderGraph();
   analyzeWindow();
+  if (isMobile() && state.result) badgeTab('results');
 });
-
-gCanvas.addEventListener('mouseup',    () => { state.dragging = null; });
 gCanvas.addEventListener('mouseleave', () => { state.dragging = null; });
+
+// Touch support for graph markers on mobile
+function getCanvasX(canvas, clientX) {
+  const r = canvas.getBoundingClientRect();
+  return (clientX - r.left) * canvas.width / r.width;
+}
+
+gCanvas.addEventListener('touchstart', e => {
+  if (!gCanvas._tx || !state.trackingData.length) return;
+  e.preventDefault();
+  const cx = getCanvasX(gCanvas, e.touches[0].clientX);
+  const ds = Math.abs(cx - markerX(state.markerStart));
+  const de = Math.abs(cx - markerX(state.markerEnd));
+  if (ds < 20) state.dragging = 'start';
+  else if (de < 20) state.dragging = 'end';
+}, { passive: false });
+
+gCanvas.addEventListener('touchmove', e => {
+  if (!state.dragging || !gCanvas._tx) return;
+  e.preventDefault();
+  const cx = getCanvasX(gCanvas, e.touches[0].clientX);
+  const n  = normFromX(cx);
+  if (state.dragging === 'start') state.markerStart = Math.min(n, state.markerEnd - 0.04);
+  else                            state.markerEnd   = Math.max(n, state.markerStart + 0.04);
+  renderGraph();
+  analyzeWindow();
+  // Badge results tab on mobile
+  if (isMobile() && state.result) badgeTab('results');
+}, { passive: false });
+
+gCanvas.addEventListener('touchend', () => { state.dragging = null; });
 
 // ══════════════════════════════════════════════════════════
 //  SIGNAL PROCESSING
@@ -1678,6 +1873,54 @@ window.addEventListener('resize', () => {
     else clearGraph();
   }, 80);
 });
+
+// ══════════════════════════════════════════════════════════
+//  MOBILE TABS
+// ══════════════════════════════════════════════════════════
+const isMobile = () => window.innerWidth < 768;
+
+let activeTab = 'video';
+
+function switchTab(tab) {
+  activeTab = tab;
+
+  // Update pane visibility
+  document.querySelectorAll('.pane').forEach(p => p.classList.remove('tab-active'));
+  const pane = document.querySelector(`.pane[data-tab="${tab}"]`);
+  if (pane) pane.classList.add('tab-active');
+
+  // Update tab button states
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+
+  // Clear badge on the tab we just opened
+  const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+  if (btn) btn.classList.remove('has-badge');
+
+  // Redraw canvas content after the pane becomes visible
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      if (tab === 'video' && state.videoLoaded) { fitVideoCanvas(); renderVideoFrame(); }
+      if (tab === 'graph') {
+        if (state.trackingData.length) renderGraph();
+        else clearGraph();
+      }
+      if (tab === 'results' && state.result) {
+        updateResults();
+        requestAnimationFrame(() => drawSpectrum(state.result));
+      }
+    }, 30);
+  });
+}
+
+function badgeTab(tab) {
+  const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+  if (btn && tab !== activeTab) btn.classList.add('has-badge');
+}
+
+// ── STEP INDICATOR ──────────────────────────────────────── (updated)
+// [Already defined above — see setStep function]
 
 // ── Init ──────────────────────────────────────────────────
 setStep(1);
