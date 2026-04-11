@@ -1074,23 +1074,23 @@ function renderGraph() {
   const tMin  = times[0], tMax = times[times.length - 1];
   const sMin  = Math.min(...sig), sMax = Math.max(...sig);
   const sSpan = sMax - sMin || 1;
-  const sPad  = sSpan * 0.12;
+  const sPad  = sSpan * 0.15;
   const sLo   = sMin - sPad, sHi = sMax + sPad;
 
+  // ── Y-AXIS INVERTED: larger values map to lower screen Y ──────────
+  // (positive displacement = downward in image = downward on graph)
   const toX = t => pl + (t - tMin) / (tMax - tMin) * pw;
-  const toY = s => pt + (1 - (s - sLo) / (sHi - sLo)) * ph;
+  const toY = s => pt + (s - sLo) / (sHi - sLo) * ph;   // inverted: sLo→top, sHi→bottom
 
-  // Store for hit-testing
-  gCanvas._tx = { toX, tMin, tMax, pl, pr, pt, pb, pw, ph, W, H };
+  gCanvas._tx = { toX, toY, tMin, tMax, sLo, sHi, pl, pr, pt, pb, pw, ph, W, H };
 
-  // Grid
+  // ── Grid ──────────────────────────────────────────────
   const ngy = 5, ngx = 8;
   gCtx.strokeStyle = '#131a21';
   gCtx.lineWidth   = 1;
   gCtx.fillStyle   = '#4a6070';
   gCtx.font        = '9px "Space Mono", monospace';
 
-  // H-grid + Y labels
   gCtx.textAlign = 'right';
   for (let i = 0; i <= ngy; i++) {
     const s = sLo + (sHi - sLo) * i / ngy;
@@ -1099,7 +1099,6 @@ function renderGraph() {
     gCtx.fillText(s.toFixed(1), pl - 5, y + 3);
   }
 
-  // V-grid + X labels
   gCtx.textAlign = 'center';
   for (let i = 0; i <= ngx; i++) {
     const t = tMin + (tMax - tMin) * i / ngx;
@@ -1108,7 +1107,6 @@ function renderGraph() {
     gCtx.fillText(t.toFixed(2) + 's', x, H - pb + 12);
   }
 
-  // Axis labels
   gCtx.fillStyle = '#4a6070';
   gCtx.font      = '9px "DM Sans", sans-serif';
   gCtx.textAlign = 'center';
@@ -1121,13 +1119,13 @@ function renderGraph() {
   gCtx.fillText(yLbl, 0, 0);
   gCtx.restore();
 
-  // Selection shading
+  // ── Selection shading ─────────────────────────────────
   const sx0 = toX(tMin + state.markerStart * (tMax - tMin));
   const sx1 = toX(tMin + state.markerEnd   * (tMax - tMin));
-  gCtx.fillStyle = 'rgba(0,200,255,0.06)';
+  gCtx.fillStyle = 'rgba(0,200,255,0.05)';
   gCtx.fillRect(sx0, pt, sx1 - sx0, ph);
 
-  // Zero line
+  // ── Zero line ─────────────────────────────────────────
   if (sLo < 0 && sHi > 0) {
     gCtx.strokeStyle = 'rgba(255,255,255,0.08)';
     gCtx.setLineDash([4, 6]);
@@ -1136,7 +1134,98 @@ function renderGraph() {
     gCtx.setLineDash([]);
   }
 
-  // Signal
+  // ── Damping envelope in the selected window ───────────
+  const r = state.result;
+  if (r && r.alpha >= 0 && r.A0 > 0) {
+    const { t0, t1, alpha, A0, zeroRef } = r;
+    const envSteps = 200;
+    const dt       = (t1 - t0) / envSteps;
+
+    // Upper envelope (positive side)
+    gCtx.beginPath();
+    for (let k = 0; k <= envSteps; k++) {
+      const t  = t0 + k * dt;
+      const av = zeroRef + A0 * Math.exp(-alpha * (t - t0));
+      const x  = toX(t), y = toY(av);
+      k === 0 ? gCtx.moveTo(x, y) : gCtx.lineTo(x, y);
+    }
+    gCtx.strokeStyle = 'rgba(255,179,64,0.55)';
+    gCtx.lineWidth   = 1.5;
+    gCtx.setLineDash([6, 4]);
+    gCtx.stroke();
+    gCtx.setLineDash([]);
+
+    // Lower envelope (negative side)
+    gCtx.beginPath();
+    for (let k = 0; k <= envSteps; k++) {
+      const t  = t0 + k * dt;
+      const av = zeroRef - A0 * Math.exp(-alpha * (t - t0));
+      const x  = toX(t), y = toY(av);
+      k === 0 ? gCtx.moveTo(x, y) : gCtx.lineTo(x, y);
+    }
+    gCtx.strokeStyle = 'rgba(255,179,64,0.55)';
+    gCtx.lineWidth   = 1.5;
+    gCtx.setLineDash([6, 4]);
+    gCtx.stroke();
+    gCtx.setLineDash([]);
+
+    // Shaded band between envelopes
+    gCtx.beginPath();
+    for (let k = 0; k <= envSteps; k++) {
+      const t  = t0 + k * dt;
+      const av = zeroRef + A0 * Math.exp(-alpha * (t - t0));
+      k === 0 ? gCtx.moveTo(toX(t), toY(av)) : gCtx.lineTo(toX(t), toY(av));
+    }
+    for (let k = envSteps; k >= 0; k--) {
+      const t  = t0 + k * dt;
+      const av = zeroRef - A0 * Math.exp(-alpha * (t - t0));
+      gCtx.lineTo(toX(t), toY(av));
+    }
+    gCtx.closePath();
+    gCtx.fillStyle = 'rgba(255,179,64,0.04)';
+    gCtx.fill();
+
+    // Zero reference line inside window
+    const zeroY = toY(zeroRef);
+    gCtx.strokeStyle = 'rgba(255,179,64,0.3)';
+    gCtx.lineWidth   = 1;
+    gCtx.setLineDash([3, 5]);
+    gCtx.beginPath(); gCtx.moveTo(sx0, zeroY); gCtx.lineTo(sx1, zeroY); gCtx.stroke();
+    gCtx.setLineDash([]);
+
+    // "zero" label
+    gCtx.fillStyle   = 'rgba(255,179,64,0.5)';
+    gCtx.font        = '8px "Space Mono", monospace';
+    gCtx.textAlign   = 'left';
+    gCtx.fillText('zero', sx0 + 4, zeroY - 3);
+
+    // ── Peak markers ──────────────────────────────────
+    // Map window sample index to full-data index
+    const firstWinIdx = times.findIndex(t => t >= t0);
+
+    const drawPeakDot = (peakObj, color) => {
+      const fullIdx = firstWinIdx + peakObj.i;
+      if (fullIdx < 0 || fullIdx >= times.length) return;
+      const t  = times[fullIdx];
+      const s  = sig[fullIdx];
+      const x  = toX(t), y = toY(s);
+      gCtx.beginPath();
+      gCtx.arc(x, y, 4, 0, Math.PI * 2);
+      gCtx.fillStyle   = color;
+      gCtx.shadowColor = color;
+      gCtx.shadowBlur  = 8;
+      gCtx.fill();
+      gCtx.shadowBlur = 0;
+      gCtx.strokeStyle = '#080c10';
+      gCtx.lineWidth   = 1;
+      gCtx.stroke();
+    };
+
+    r.posPeaks.forEach(p => drawPeakDot(p, '#ffb340'));
+    r.negPeaks.forEach(p => drawPeakDot(p, '#ff7a40'));
+  }
+
+  // ── Signal ────────────────────────────────────────────
   gCtx.strokeStyle = '#00c8ff';
   gCtx.lineWidth   = 1.5;
   gCtx.shadowColor = 'rgba(0,200,255,0.25)';
@@ -1149,11 +1238,11 @@ function renderGraph() {
   gCtx.stroke();
   gCtx.shadowBlur = 0;
 
-  // Markers
+  // ── Markers ───────────────────────────────────────────
   drawMarker(sx0, 'S', '#00e5a0', pt, H - pb);
   drawMarker(sx1, 'E', '#ff4560', pt, H - pb);
 
-  // Plot border
+  // ── Plot border ───────────────────────────────────────
   gCtx.strokeStyle = '#1e2d3d';
   gCtx.lineWidth   = 1;
   gCtx.strokeRect(pl, pt, pw, ph);
@@ -1298,6 +1387,21 @@ function findPeaks(sig, minDist) {
   return peaks;
 }
 
+function findNegPeaks(sig, minDist) {
+  // Find local minima (negative peaks)
+  const peaks = [];
+  for (let i = 1; i < sig.length - 1; i++) {
+    if (sig[i] <= sig[i-1] && sig[i] < sig[i+1]) {
+      if (!peaks.length || i - peaks[peaks.length-1].i > minDist) {
+        peaks.push({ i, v: sig[i] });
+      } else if (sig[i] < peaks[peaks.length-1].v) {
+        peaks[peaks.length-1] = { i, v: sig[i] };
+      }
+    }
+  }
+  return peaks;
+}
+
 function analyzeWindow() {
   if (!state.trackingData.length) return;
 
@@ -1305,72 +1409,108 @@ function analyzeWindow() {
   const tMin   = times[0], tMax = times[times.length - 1];
   const t0     = tMin + state.markerStart * (tMax - tMin);
   const t1     = tMin + state.markerEnd   * (tMax - tMin);
-  const window = state.trackingData.filter(d => d.t >= t0 && d.t <= t1);
+  const winData = state.trackingData.filter(d => d.t >= t0 && d.t <= t1);
 
-  if (window.length < 8) { state.result = null; updateResults(); return; }
+  if (winData.length < 8) { state.result = null; updateResults(); renderGraph(); return; }
 
-  const raw = window.map(d =>
+  const raw = winData.map(d =>
     state.component === 'x'   ? d.dx :
     state.component === 'y'   ? d.dy :
     Math.sqrt(d.dx*d.dx + d.dy*d.dy));
 
-  // DC removal
-  const mean    = raw.reduce((a, b) => a + b, 0) / raw.length;
-  const sig     = raw.map(v => v - mean);
-  const winDur  = t1 - t0;
-  const fs      = (window.length - 1) / winDur;
+  const winDur = t1 - t0;
+  const fs     = (winData.length - 1) / winDur;
 
-  // FFT
-  const { mag, Nfft } = computeSpectrum(sig);
+  // Zero reference = value at END of selected interval (equilibrium estimate)
+  const zeroRef = raw[raw.length - 1];
+  // Signal relative to zero-at-end
+  const sig = raw.map(v => v - zeroRef);
+
+  // DC-removed signal for FFT only
+  const mean   = raw.reduce((a, b) => a + b, 0) / raw.length;
+  const sigDC  = raw.map(v => v - mean);
+
+  // ── FFT for natural frequency ─────────────────────────
+  const { mag, Nfft } = computeSpectrum(sigDC);
   const df = fs / Nfft;
 
-  // Find dominant peak (skip very low freqs)
-  const minF   = 0.3;           // Hz
-  let peakIdx  = Math.max(1, Math.ceil(minF / df));
-  let peakMag  = 0;
+  const minF  = 0.3;
+  let peakIdx = Math.max(1, Math.ceil(minF / df));
+  let peakMag = 0;
   for (let i = peakIdx; i < mag.length; i++) {
     if (mag[i] > peakMag) { peakMag = mag[i]; peakIdx = i; }
   }
   const fn = peakIdx * df;
 
   // Half-power bandwidth
-  const hp   = peakMag / Math.SQRT2;
-  let f1i    = peakIdx, f2i = peakIdx;
+  const hp  = peakMag / Math.SQRT2;
+  let f1i   = peakIdx, f2i = peakIdx;
   for (let i = peakIdx; i >= 1; i--) { if (mag[i] <= hp) { f1i = i; break; } }
   for (let i = peakIdx; i < mag.length; i++) { if (mag[i] <= hp) { f2i = i; break; } }
   const zetaHP = Math.max(0, Math.min(0.99, (f2i - f1i) * df / (2 * fn)));
 
-  // Logarithmic decrement
-  let zetaLD = null, method = 'Half-Power Bandwidth';
+  // ── Peak detection in zero-referenced signal ──────────
   const minPeakDist = Math.max(1, Math.floor(fs / fn / 2.5));
-  const peaks       = findPeaks(sig, minPeakDist);
+  const posPeaks    = findPeaks(sig, minPeakDist).filter(p => p.v > 0);
+  const negPeaks    = findNegPeaks(sig, minPeakDist).filter(p => p.v < 0);
 
-  // Use positive peaks only, sorted by value desc
-  const absPeaks = peaks.filter(p => p.v > 0).sort((a, b) => a.i - b.i);
-  if (absPeaks.length >= 3) {
-    const n   = absPeaks.length - 1;
-    const A1  = absPeaks[0].v;
-    const An  = absPeaks[n].v;
+  // ── Log decrement from positive peaks ─────────────────
+  let delta = null, zetaLD = null;
+  if (posPeaks.length >= 2) {
+    const n  = posPeaks.length - 1;
+    const A1 = posPeaks[0].v;
+    const An = posPeaks[n].v;
     if (An > 0 && A1 > An) {
-      const delta = Math.log(A1 / An) / n;
+      delta  = Math.log(A1 / An) / n;
       zetaLD = Math.max(0, Math.min(0.99,
         delta / Math.sqrt(4 * Math.PI * Math.PI + delta * delta)));
-      method = 'Logarithmic Decrement';
+    }
+  }
+  // Fallback: try negative peaks
+  if (zetaLD === null && negPeaks.length >= 2) {
+    const n  = negPeaks.length - 1;
+    const A1 = Math.abs(negPeaks[0].v);
+    const An = Math.abs(negPeaks[n].v);
+    if (An > 0 && A1 > An) {
+      delta  = Math.log(A1 / An) / n;
+      zetaLD = Math.max(0, Math.min(0.99,
+        delta / Math.sqrt(4 * Math.PI * Math.PI + delta * delta)));
     }
   }
 
-  const zeta = zetaLD !== null ? zetaLD : zetaHP;
-  const Q    = zeta > 0 ? 1 / (2 * zeta) : 999;
+  const zeta    = zetaLD !== null ? zetaLD : zetaHP;
+  const omegaN  = 2 * Math.PI * fn;
+  const alpha   = zeta * omegaN;          // exponential decay rate [1/s]
+  const tau     = alpha > 0 ? 1 / alpha : Infinity; // time constant [s]
+  const logDec  = delta !== null
+    ? delta
+    : (2 * Math.PI * zetaHP / Math.sqrt(Math.max(1e-12, 1 - zetaHP * zetaHP)));
+  const Q       = zeta > 0 ? 1 / (2 * zeta) : 999;
+  const method  = zetaLD !== null ? 'Logarithmic Decrement' : 'Half-Power Bandwidth';
+
+  // ── Envelope amplitude at t0 ──────────────────────────
+  // Extrapolate first peak's amplitude back to t=0 of window
+  let A0 = Math.max(...sig.map(Math.abs));  // fallback
+  if (posPeaks.length > 0) {
+    const tRel = winData[posPeaks[0].i].t - t0;
+    A0 = posPeaks[0].v * Math.exp(alpha * tRel);
+  } else if (negPeaks.length > 0) {
+    const tRel = winData[negPeaks[0].i].t - t0;
+    A0 = Math.abs(negPeaks[0].v) * Math.exp(alpha * tRel);
+  }
 
   state.result = {
     fn, zeta, zetaHP, zetaLD, Q,
+    logDec, alpha, tau, A0, zeroRef,
+    posPeaks, negPeaks,
+    winData, sig,
     method, winDur, t0, t1,
-    mag, df, peakIdx, peakMag,
-    fs, n: window.length
+    mag, df, peakIdx, peakMag, fs, n: winData.length
   };
 
   document.getElementById('resultsDot').classList.add('green');
   updateResults();
+  renderGraph();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1389,11 +1529,12 @@ function updateResults() {
     return;
   }
 
-  const fnColor  = '#00c8ff';
   const fnRad    = (r.fn * 2 * Math.PI).toFixed(3);
   const zetaPct  = (r.zeta * 100).toFixed(3);
   const zetaHPct = (r.zetaHP * 100).toFixed(3);
   const isLD     = r.zetaLD !== null;
+  const nPos     = r.posPeaks.length;
+  const nNeg     = r.negPeaks.length;
 
   el.innerHTML = `
     <div class="window-block">
@@ -1401,6 +1542,8 @@ function updateResults() {
       <div>END &nbsp;&nbsp;<span class="wval">${r.t1.toFixed(4)} s</span></div>
       <div>DUR &nbsp;&nbsp;<span class="wval">${r.winDur.toFixed(4)} s</span></div>
       <div>N &nbsp;&nbsp;&nbsp;&nbsp;<span class="wval">${r.n} samples @ ${r.fs.toFixed(1)} Hz</span></div>
+      <div>PEAKS&nbsp;<span class="wval">${nPos}+ / ${nNeg}− detected</span></div>
+      <div>ZERO &nbsp;<span class="wval">${r.zeroRef.toFixed(3)} px (end of window)</span></div>
     </div>
 
     <div class="result-block">
@@ -1419,15 +1562,44 @@ function updateResults() {
         <span class="result-unit">%</span>
       </div>
       <span class="method-tag ${isLD ? 'green' : ''}">${r.method}</span>
-      ${isLD ? `<div class="result-sub" style="margin-top:6px">Half-power check: ${zetaHPct}%</div>` : ''}
+      ${isLD ? `<div class="result-sub" style="margin-top:6px">Half-power check: ${zetaHPct} %</div>` : ''}
     </div>
 
     <div class="result-block amber">
+      <div class="result-lbl">Logarithmic Decrement δ</div>
+      <div>
+        <span class="result-val amber">${r.logDec.toFixed(5)}</span>
+      </div>
+      <div class="result-sub">δ = ln(Aₙ/Aₙ₊₁) per cycle</div>
+      <div class="result-sub">δ = 2π·ζ / √(1−ζ²)</div>
+    </div>
+
+    <div class="result-block" style="--accent:#c084fc">
+      <div class="result-lbl">Exponential Decay Rate α</div>
+      <div>
+        <span class="result-val" style="color:#c084fc">${r.alpha.toFixed(4)}</span>
+        <span class="result-unit">1/s</span>
+      </div>
+      <div class="result-sub">α = ζ · ωₙ = ${r.alpha.toFixed(4)} s⁻¹</div>
+      <div class="result-sub">A(t) = A₀ · e<sup>−αt</sup></div>
+    </div>
+
+    <div class="result-block" style="--accent:#c084fc">
+      <div class="result-lbl">Time Constant τ = 1/α</div>
+      <div>
+        <span class="result-val" style="color:#c084fc">${isFinite(r.tau) ? r.tau.toFixed(4) : '∞'}</span>
+        <span class="result-unit">s</span>
+      </div>
+      <div class="result-sub">Amplitude falls to 1/e ≈ 36.8% after τ</div>
+    </div>
+
+    <div class="result-block red">
       <div class="result-lbl">Quality Factor Q</div>
       <div>
-        <span class="result-val amber">${r.Q.toFixed(2)}</span>
+        <span class="result-val" style="color:#ff4560">${r.Q > 900 ? '> 900' : r.Q.toFixed(2)}</span>
       </div>
-      <div class="result-sub">Q = 1 / (2ζ)</div>
+      <div class="result-sub">Q = 1/(2ζ) = ωₙ/α·½ = π/δ</div>
+      <div class="result-sub" style="margin-top:2px">π/δ = ${r.logDec > 0 ? (Math.PI/r.logDec).toFixed(2) : '—'}</div>
     </div>
 
     <div class="spectrum-block">
