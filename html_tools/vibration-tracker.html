@@ -33,6 +33,7 @@ body {
   color: var(--text);
   font-family: var(--sans);
   height: 100vh;
+  height: 100dvh; /* mobile: excludes browser chrome */
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -580,6 +581,8 @@ header {
     position: relative;
     background: var(--bg);
     overflow: hidden;
+    flex: 1;
+    min-height: 0; /* critical: lets flex child shrink below content size */
   }
 
   /* All panes fill the workspace, hidden by default */
@@ -595,15 +598,17 @@ header {
   /* Only the active tab's pane is visible */
   .pane.tab-active { display: flex !important; }
 
-  /* ── Tab bar ────────────────────────── */
+  /* ── Tab bar always pinned at bottom ── */
   .tab-bar {
     display: flex;
     flex-shrink: 0;
-    height: 58px;
+    min-height: 58px;
+    height: calc(58px + env(safe-area-inset-bottom, 0px));
     background: var(--surf);
     border-top: 1px solid var(--border);
     position: relative;
     z-index: 10;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .tab-btn {
