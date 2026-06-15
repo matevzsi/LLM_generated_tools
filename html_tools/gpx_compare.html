@@ -45,6 +45,15 @@
     .trk2 { background:var(--trk2); }
     .trk1Txt { color:var(--trk1); }
     .trk2Txt { color:var(--trk2); }
+    .velMatrix { margin-top:8px; display:flex; flex-direction:column; gap:5px; }
+    .velRow { display:grid; grid-template-columns: 34px 1fr 100px; align-items:center; gap:8px; }
+    .velRow .velTitle { font-size:11px; color:var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .barTrack { position:relative; height:6px; background:#0a121c; border:1px solid var(--line); border-radius:3px; overflow:hidden; }
+    .barFill { position:absolute; top:0; bottom:0; width:0; left:0; }
+    .barFill.trk1 { background:var(--trk1); }
+    .barFill.trk2 { background:var(--trk2); }
+    .barTrack .zeroLine { position:absolute; left:50%; top:0; bottom:0; width:1px; background:rgba(154,164,175,0.45); }
+    .barVal { font-size:11px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align:right; }
   </style>
 </head>
 <body>
@@ -98,13 +107,27 @@
             <div class="small mono" id="hSub"></div>
           </div>
         </div>
-        <div class="row" style="margin-top:8px;">
+        <div class="row" style="margin-top:8px; gap:14px;">
           <div class="small mono">t = <span id="tVal">—</span></div>
+          <div class="small mono">s = <span id="sVal">—</span></div>
         </div>
       </div>
 
       <div class="card">
-        <label>Height profile (vs distance)</label>
+        <div class="row" style="justify-content:space-between;">
+          <label style="margin-bottom:0;">Height profile (vs distance)</label>
+          <div class="small mono">
+            view=
+            <select id="viewMode" class="btn" style="padding:4px 8px; border-radius:8px;">
+              <option value="full" selected>full</option>
+              <option value="window">window</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin:6px 0 4px 0;">
+          <input id="viewWindow" type="range" min="100" max="50000" step="100" value="2000" disabled />
+          <div class="small mono">view window=<span id="viewWindowVal">2000</span> m</div>
+        </div>
         <canvas id="elevCanvas" width="800" height="300"></canvas>
         <div class="grid2" style="margin-top:6px;">
           <div>
@@ -116,6 +139,28 @@
             <div class="small mono trk2Txt">h2=<span id="h2">—</span> m</div>
             <div class="small mono trk2Txt" id="incl2Now">incl2=—</div>
             <div class="small mono trk2Txt" id="v2Now">v2=—</div>
+          </div>
+        </div>
+        <div class="velMatrix">
+          <div class="velRow">
+            <div class="velTitle trk1Txt">v1</div>
+            <div class="barTrack"><div class="barFill trk1" id="vBar1"></div></div>
+            <div class="barVal trk1Txt" id="vBar1Txt">—</div>
+          </div>
+          <div class="velRow">
+            <div class="velTitle trk2Txt">v2</div>
+            <div class="barTrack"><div class="barFill trk2" id="vBar2"></div></div>
+            <div class="barVal trk2Txt" id="vBar2Txt">—</div>
+          </div>
+          <div class="velRow">
+            <div class="velTitle trk1Txt">v↕1</div>
+            <div class="barTrack"><div class="zeroLine"></div><div class="barFill trk1" id="vvBar1"></div></div>
+            <div class="barVal trk1Txt" id="vvBar1Txt">—</div>
+          </div>
+          <div class="velRow">
+            <div class="velTitle trk2Txt">v↕2</div>
+            <div class="barTrack"><div class="zeroLine"></div><div class="barFill trk2" id="vvBar2"></div></div>
+            <div class="barVal trk2Txt" id="vvBar2Txt">—</div>
           </div>
         </div>
       </div>
@@ -234,6 +279,8 @@
     for (let i=dedup.length-2;i>=0;i--){
       if (!Number.isFinite(dedup[i].ele)) dedup[i].ele = dedup[i+1].ele;
     }
+    // preserve raw ele (correction is applied later, reproducibly)
+    for (const p of dedup) p.eleRaw = p.ele;
 
     const times = dedup.map(p=>p.t);
 
@@ -244,6 +291,21 @@
     for (const p of dedup) p.tr = p.t - t0;
     const rtimes = dedup.map(p=>p.tr);
 
+    // per-segment max speeds (used to scale bar graphs)
+    let maxV = 0, maxVV = 0;
+    for (let i=1;i<dedup.length;i++){
+      const a = dedup[i-1], b = dedup[i];
+      const dtSec = (b.tr - a.tr)/1000;
+      if (dtSec <= 0) continue;
+      const ds = b.s - a.s;
+      const vKmh = (ds/dtSec)*3.6;
+      if (vKmh > maxV) maxV = vKmh;
+      if (Number.isFinite(a.ele) && Number.isFinite(b.ele)){
+        const vvMh = Math.abs((b.ele - a.ele)/(dtSec/3600));
+        if (vvMh > maxVV) maxVV = vvMh;
+      }
+    }
+
     return {
       pts: dedup,
       times,          // absolute ms (kept for metadata)
@@ -251,7 +313,9 @@
       t0, t1,
       r0: 0,
       r1: dedup[dedup.length-1]?.tr ?? 0,
-      sTotal: dedup[dedup.length-1]?.s ?? 0
+      sTotal: dedup[dedup.length-1]?.s ?? 0,
+      maxV,           // max km/h observed
+      maxVV           // max |m/h| observed
     };
   }
 
@@ -343,10 +407,86 @@
     return { vMs, vKmh };
   }
 
+  function localVerticalVelocityAtRelTime(track, tr){
+    if (!track || !track.pts || track.pts.length < 2) return null;
+    const times = track.rtimes;
+    if (tr < times[0] || tr > times[times.length-1]) return null;
+
+    const i = binSearchRight(times, tr);
+    if (i < 0) return null;
+
+    const i0 = Math.max(0, Math.min(i, track.pts.length - 2));
+    const i1 = i0 + 1;
+    const a = track.pts[i0], b = track.pts[i1];
+
+    const dtHrs = (b.tr - a.tr) / 3600000;
+    if (!Number.isFinite(dtHrs) || dtHrs <= 0) return null;
+    if (!Number.isFinite(a.ele) || !Number.isFinite(b.ele)) return null;
+
+    const vMh = (b.ele - a.ele) / dtHrs;
+    return { vMh };
+  }
+
+  function avgVelocityAtRelTime(track, tr, windowMs){
+    if (!track || !track.pts || track.pts.length < 2) return null;
+    const times = track.rtimes;
+    const tMin = times[0], tMax = times[times.length-1];
+    if (tr < tMin || tr > tMax) return null;
+    const half = Math.max(1, windowMs/2);
+    const t0 = clamp(tr - half, tMin, tMax);
+    const t1 = clamp(tr + half, tMin, tMax);
+    if (t1 <= t0) return null;
+    const a = sampleAtRelTime(track, t0);
+    const b = sampleAtRelTime(track, t1);
+    if (!a || !b) return null;
+    const dtSec = (t1 - t0) / 1000;
+    if (dtSec <= 0) return null;
+    const vMs = (b.s - a.s) / dtSec;
+    return { vMs, vKmh: vMs * 3.6 };
+  }
+
+  function avgVerticalVelocityAtRelTime(track, tr, windowMs){
+    if (!track || !track.pts || track.pts.length < 2) return null;
+    const times = track.rtimes;
+    const tMin = times[0], tMax = times[times.length-1];
+    if (tr < tMin || tr > tMax) return null;
+    const half = Math.max(1, windowMs/2);
+    const t0 = clamp(tr - half, tMin, tMax);
+    const t1 = clamp(tr + half, tMin, tMax);
+    if (t1 <= t0) return null;
+    const a = sampleAtRelTime(track, t0);
+    const b = sampleAtRelTime(track, t1);
+    if (!a || !b) return null;
+    if (!Number.isFinite(a.ele) || !Number.isFinite(b.ele)) return null;
+    const dtHrs = (t1 - t0) / 3600000;
+    if (dtHrs <= 0) return null;
+    return { vMh: (b.ele - a.ele) / dtHrs };
+  }
+
   function niceMeters(m){
     if (!Number.isFinite(m)) return "—";
     if (Math.abs(m) < 1000) return `${m.toFixed(1)} m`;
     return `${(m/1000).toFixed(3)} km`;
+  }
+
+  function setBar(el, val, maxVal){
+    if (!Number.isFinite(val) || val < 0){ el.style.left = "0"; el.style.width = "0"; return; }
+    const pct = Math.min(100, val / Math.max(1, maxVal) * 100);
+    el.style.left = "0";
+    el.style.width = pct + "%";
+  }
+
+  function setSignedBar(el, val, maxAbs){
+    if (!Number.isFinite(val)){ el.style.left = "50%"; el.style.width = "0"; return; }
+    const m = Math.max(1, maxAbs);
+    const pct = Math.min(50, Math.abs(val)/m * 50);
+    if (val >= 0){
+      el.style.left = "50%";
+      el.style.width = pct + "%";
+    } else {
+      el.style.left = (50 - pct) + "%";
+      el.style.width = pct + "%";
+    }
   }
 
   // ---------- UI + Map ----------
@@ -369,6 +509,10 @@
   const timeMin = document.getElementById("timeMin");
   const timeMax = document.getElementById("timeMax");
   const tVal = document.getElementById("tVal");
+  const sVal = document.getElementById("sVal");
+  const viewMode = document.getElementById("viewMode");
+  const viewWindow = document.getElementById("viewWindow");
+  const viewWindowVal = document.getElementById("viewWindowVal");
 
   const dist2d = document.getElementById("dist2d");
   const dist2dSub = document.getElementById("dist2dSub");
@@ -380,6 +524,14 @@
   const incl2Now = document.getElementById("incl2Now");
   const v1Now = document.getElementById("v1Now");
   const v2Now = document.getElementById("v2Now");
+  const vBar1 = document.getElementById("vBar1");
+  const vBar2 = document.getElementById("vBar2");
+  const vBar1Txt = document.getElementById("vBar1Txt");
+  const vBar2Txt = document.getElementById("vBar2Txt");
+  const vvBar1 = document.getElementById("vvBar1");
+  const vvBar2 = document.getElementById("vvBar2");
+  const vvBar1Txt = document.getElementById("vvBar1Txt");
+  const vvBar2Txt = document.getElementById("vvBar2Txt");
   const inclGraphNow = document.getElementById("inclGraphNow");
   const inclSource = document.getElementById("inclSource");
   const inclWindow = document.getElementById("inclWindow");
@@ -427,6 +579,8 @@
     const anyReady = anyTrackReady();
     setEnabled(anyReady);
     autoOffsetBtn.disabled = !bothTracksReady();
+    viewMode.disabled = !anyReady;
+    viewWindow.disabled = !anyReady || viewMode.value !== "window";
 
     const has1 = hasTrack1();
     const has2 = hasTrack2();
@@ -565,6 +719,50 @@
     return {mn, mx};
   }
 
+  function getElevBoundsInRange(tr, s0, s1){
+    if (!tr || !tr.pts || !tr.pts.length) return {mn:0, mx:1};
+    let mn=+Infinity, mx=-Infinity;
+    const e0 = eleAtDistance(tr, s0);
+    const e1 = eleAtDistance(tr, s1);
+    if (Number.isFinite(e0)){ if (e0<mn) mn=e0; if (e0>mx) mx=e0; }
+    if (Number.isFinite(e1)){ if (e1<mn) mn=e1; if (e1>mx) mx=e1; }
+    for (const p of tr.pts){
+      if (p.s < s0 || p.s > s1) continue;
+      if (Number.isFinite(p.ele)){
+        if (p.ele < mn) mn=p.ele;
+        if (p.ele > mx) mx=p.ele;
+      }
+    }
+    if (!Number.isFinite(mn) || !Number.isFinite(mx) || mn===mx) { mn=0; mx=1; }
+    return {mn, mx};
+  }
+
+  function getMainSampleDistance(){
+    const tcur = parseInt(time.value,10);
+    const off = parseInt(offset.value,10)*1000;
+    if (hasTrack1()){
+      const p = sampleAtRelTime(tr1, tcur);
+      if (p) return p.s;
+    }
+    if (hasTrack2()){
+      const p = sampleAtRelTime(tr2, tcur + off);
+      if (p) return p.s;
+    }
+    return 0;
+  }
+
+  function getViewRange(maxD){
+    if (viewMode.value !== "window") return { s0: 0, s1: maxD };
+    const W = Math.max(10, parseInt(viewWindow.value,10) || 1000);
+    const sC = getMainSampleDistance();
+    let s0 = sC - W/2, s1 = sC + W/2;
+    if (s0 < 0){ s1 -= s0; s0 = 0; }
+    if (s1 > maxD){ s0 -= (s1 - maxD); s1 = maxD; }
+    s0 = Math.max(0, s0); s1 = Math.min(maxD, s1);
+    if (s1 <= s0) s1 = s0 + 1;
+    return { s0, s1 };
+  }
+
   function drawElevationProfile(){
     const ctx = ectx;
     const { w, h } = prepCanvas(elevCanvas, ctx);
@@ -574,25 +772,27 @@
 
     if (!anyTrackReady()) return;
 
-    // bounds from available tracks
-    let mn = +Infinity, mx = -Infinity;
     let maxD = 1;
+    if (hasTrack1()) maxD = Math.max(maxD, tr1.sTotal || 1);
+    if (hasTrack2()) maxD = Math.max(maxD, tr2.sTotal || 1);
+
+    const view = getViewRange(maxD);
+
+    // bounds from visible range
+    let mn = +Infinity, mx = -Infinity;
     if (hasTrack1()){
-      const b1 = getElevBounds(tr1);
-      mn = Math.min(mn, b1.mn);
-      mx = Math.max(mx, b1.mx);
-      maxD = Math.max(maxD, tr1.sTotal || 1);
+      const b1 = getElevBoundsInRange(tr1, view.s0, view.s1);
+      mn = Math.min(mn, b1.mn); mx = Math.max(mx, b1.mx);
     }
     if (hasTrack2()){
-      const b2 = getElevBounds(tr2);
-      mn = Math.min(mn, b2.mn);
-      mx = Math.max(mx, b2.mx);
-      maxD = Math.max(maxD, tr2.sTotal || 1);
+      const b2 = getElevBoundsInRange(tr2, view.s0, view.s1);
+      mn = Math.min(mn, b2.mn); mx = Math.max(mx, b2.mx);
     }
     if (!Number.isFinite(mn) || !Number.isFinite(mx) || mn===mx) { mn=0; mx=1; }
 
+    const sSpan = Math.max(1, view.s1 - view.s0);
     function xy(s, ele){
-      const x = pad + (w-2*pad) * (s / maxD);
+      const x = pad + (w-2*pad) * ((s - view.s0) / sSpan);
       const y = (h-pad) - (h-2*pad) * ((ele - mn) / (mx - mn));
       return [x,y];
     }
@@ -634,9 +834,14 @@
       ctx.stroke();
     }
 
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(pad, pad, w-2*pad, h-2*pad);
+    ctx.clip();
     if (hasTrack1()) strokeTrack(tr1, TRACK1_COLOR, false);
     if (hasTrack2()) strokeTrack(tr2, TRACK2_COLOR, false);
     ctx.setLineDash([]);
+    ctx.restore();
 
     // current markers
     const tr = parseInt(time.value,10);
@@ -644,14 +849,14 @@
     const p1 = hasTrack1() ? sampleAtRelTime(tr1, tr) : null;
     const p2 = hasTrack2() ? sampleAtRelTime(tr2, tr + off) : null;
 
-    if (p1){
+    if (p1 && p1.s >= view.s0 && p1.s <= view.s1){
       const [x,y] = xy(p1.s, p1.ele);
       ctx.fillStyle = TRACK1_COLOR;
       ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
       ctx.strokeStyle="rgba(87,199,255,0.35)";
       ctx.beginPath(); ctx.moveTo(x,pad); ctx.lineTo(x,h-pad); ctx.stroke();
     }
-    if (p2){
+    if (p2 && p2.s >= view.s0 && p2.s <= view.s1){
       const [x,y] = xy(p2.s, p2.ele);
       ctx.fillStyle = TRACK2_COLOR;
       ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
@@ -666,7 +871,8 @@
     ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
     ctx.fillText(`${mn.toFixed(0)} m`, 6, h-pad+4);
     ctx.fillText(`${mx.toFixed(0)} m`, 6, pad+8);
-    ctx.fillText(`${(maxD/1000).toFixed(2)} km`, w-pad-90, h-10);
+    ctx.fillText(`${(view.s0/1000).toFixed(2)} km`, pad+4, h-10);
+    ctx.fillText(`${(view.s1/1000).toFixed(2)} km`, w-pad-90, h-10);
   }
 
   function drawInclinationPlot(){
@@ -700,11 +906,13 @@
     if (!active.length) return;
 
     const maxD = Math.max(selected === 2 ? (hasTrack2() ? tr2.sTotal : 0) : (hasTrack1() ? tr1.sTotal : 0), 1);
+    const view = getViewRange(maxD);
+    const sSpan = Math.max(1, view.s1 - view.s0);
     const mn = -15;
     const mx = 15;
 
     function xy(s, gradePct){
-      const x = pad + (w-2*pad) * (s / maxD);
+      const x = pad + (w-2*pad) * ((s - view.s0) / sSpan);
       const yy = (h-pad) - (h-2*pad) * ((gradePct - mn) / (mx - mn));
       return [x, yy];
     }
@@ -758,8 +966,13 @@
       ctx.setLineDash([]);
     }
 
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(pad, pad, w-2*pad, h-2*pad);
+    ctx.clip();
     strokeSeries(s1, false);
     strokeSeries(s2, false);
+    ctx.restore();
 
     // zero line
     const [x0,y0] = xy(0, 0);
@@ -775,14 +988,14 @@
     const i1 = canShow1 ? localInclinationAtRelTime(tr1, tcur, inclWindowMeters) : null;
     const i2 = canShow2 ? localInclinationAtRelTime(tr2, tcur + off, inclWindowMeters) : null;
 
-    if (p1 && i1){
+    if (p1 && i1 && p1.s >= view.s0 && p1.s <= view.s1){
       if (i1.gradePct >= mn && i1.gradePct <= mx){
       const [x,y] = xy(p1.s, i1.gradePct);
       ctx.fillStyle = TRACK1_COLOR;
       ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
       }
     }
-    if (p2 && i2){
+    if (p2 && i2 && p2.s >= view.s0 && p2.s <= view.s1){
       if (i2.gradePct >= mn && i2.gradePct <= mx){
       const [x,y] = xy(p2.s, i2.gradePct);
       ctx.fillStyle = TRACK2_COLOR;
@@ -795,7 +1008,8 @@
     ctx.font = "15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
     ctx.fillText(`${mn.toFixed(1)} %`, 6, h-pad+4);
     ctx.fillText(`${mx.toFixed(1)} %`, 6, pad+8);
-    ctx.fillText(`${(maxD/1000).toFixed(2)} km`, w-pad-90, h-10);
+    ctx.fillText(`${(view.s0/1000).toFixed(2)} km`, pad+4, h-10);
+    ctx.fillText(`${(view.s1/1000).toFixed(2)} km`, w-pad-90, h-10);
 
     ctx.font = "13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
     ctx.fillStyle = "#64d38a";
@@ -814,7 +1028,9 @@
 
     const offSec = parseInt(offset.value,10);
     const inclWindowMeters = parseInt(inclWindow.value, 10) || 50;
+    const viewWindowMeters = parseInt(viewWindow.value, 10) || 2000;
     inclWindowVal.textContent = String(inclWindowMeters);
+    viewWindowVal.textContent = String(viewWindowMeters);
     offsetVal.textContent = String(offSec);
 
     const tr = parseInt(time.value,10);       // relative ms from GPX#1 start
@@ -822,6 +1038,9 @@
 
     const p1 = hasTrack1() ? sampleAtRelTime(tr1, tr) : null;
     const p2 = hasTrack2() ? sampleAtRelTime(tr2, tr + offSec*1000) : null;
+
+    const sCur = p1 ? p1.s : (p2 ? p2.s : NaN);
+    sVal.textContent = Number.isFinite(sCur) ? niceMeters(sCur) : "—";
 
     if (mk1){
       if (p1){ mk1.setLatLng([p1.lat, p1.lon]); mk1.setStyle({ opacity: 1, fillOpacity: 1 }); }
@@ -848,10 +1067,15 @@
       if (linkLine) linkLine.setLatLngs([]);
     }
 
+    const vMaxKmh = 50;
+    const vvMaxMh = 1000;
+
+    let vel1=null, vv1=null, vel2=null, vv2=null;
     if (p1){
       h1.textContent = p1.ele.toFixed(1);
       const incl1 = localInclinationAtRelTime(tr1, tr, inclWindowMeters);
-      const vel1 = localVelocityAtRelTime(tr1, tr);
+      vel1 = localVelocityAtRelTime(tr1, tr);
+      vv1 = localVerticalVelocityAtRelTime(tr1, tr);
       incl1Now.textContent = incl1
         ? `incl1=${incl1.gradePct.toFixed(2)}% (${incl1.angleDeg.toFixed(2)}°)`
         : "incl1=—";
@@ -867,7 +1091,8 @@
     if (p2){
       h2.textContent = p2.ele.toFixed(1);
       const incl2 = localInclinationAtRelTime(tr2, tr + offSec*1000, inclWindowMeters);
-      const vel2 = localVelocityAtRelTime(tr2, tr + offSec*1000);
+      vel2 = localVelocityAtRelTime(tr2, tr + offSec*1000);
+      vv2 = localVerticalVelocityAtRelTime(tr2, tr + offSec*1000);
       incl2Now.textContent = incl2
         ? `incl2=${incl2.gradePct.toFixed(2)}% (${incl2.angleDeg.toFixed(2)}°)`
         : "incl2=—";
@@ -879,6 +1104,22 @@
       incl2Now.textContent = "incl2=—";
       v2Now.textContent = "v2=—";
     }
+
+    const AVG_WINDOW_MS = 5000;
+    const velAvg1 = p1 ? avgVelocityAtRelTime(tr1, tr, AVG_WINDOW_MS) : null;
+    const velAvg2 = p2 ? avgVelocityAtRelTime(tr2, tr + offSec*1000, AVG_WINDOW_MS) : null;
+    const vvAvg1  = p1 ? avgVerticalVelocityAtRelTime(tr1, tr, AVG_WINDOW_MS) : null;
+    const vvAvg2  = p2 ? avgVerticalVelocityAtRelTime(tr2, tr + offSec*1000, AVG_WINDOW_MS) : null;
+
+    setBar(vBar1, velAvg1 ? velAvg1.vKmh : NaN, vMaxKmh);
+    setBar(vBar2, velAvg2 ? velAvg2.vKmh : NaN, vMaxKmh);
+    vBar1Txt.textContent = velAvg1 ? `${velAvg1.vKmh.toFixed(1)} km/h` : "—";
+    vBar2Txt.textContent = velAvg2 ? `${velAvg2.vKmh.toFixed(1)} km/h` : "—";
+
+    setSignedBar(vvBar1, vvAvg1 ? vvAvg1.vMh : NaN, vvMaxMh);
+    setSignedBar(vvBar2, vvAvg2 ? vvAvg2.vMh : NaN, vvMaxMh);
+    vvBar1Txt.textContent = vvAvg1 ? `${Math.round(vvAvg1.vMh)} m/h` : "—";
+    vvBar2Txt.textContent = vvAvg2 ? `${Math.round(vvAvg2.vMh)} m/h` : "—";
 
     const selected = inclSource.value === "2" ? 2 : 1;
     const curIncl1 = hasTrack1() ? localInclinationAtRelTime(tr1, tr, inclWindowMeters) : null;
@@ -901,9 +1142,11 @@
     const tr = parseGpx(txt);
     if (!tr.pts.length) throw new Error("No trkpt/time points found in GPX.");
     if (which === 1) tr1 = tr; else tr2 = tr;
+    applyTrack2HeightCorrection();
     updateMeta();
     updateControls();
     updateTimeRange();
+    updateViewWindowRange();
     drawTracks();
     // fixed offset range
     offset.min = "-15000";
@@ -911,6 +1154,28 @@
     offset.value = "0";
     offset.dispatchEvent(new Event("input"));
     update();
+  }
+
+  function updateViewWindowRange(){
+    let maxD = 0;
+    if (hasTrack1()) maxD = Math.max(maxD, tr1.sTotal || 0);
+    if (hasTrack2()) maxD = Math.max(maxD, tr2.sTotal || 0);
+    if (maxD < 200) return;
+    const maxRounded = Math.max(200, Math.round(maxD));
+    viewWindow.max = String(maxRounded);
+    const cur = parseInt(viewWindow.value, 10) || 2000;
+    if (cur > maxRounded) viewWindow.value = String(maxRounded);
+    viewWindowVal.textContent = viewWindow.value;
+  }
+
+  function applyTrack2HeightCorrection(){
+    if (!tr2 || !tr2.pts || !tr2.pts.length) return;
+    // reset to raw, then offset if track1 is available
+    let off = 0;
+    if (hasTrack1() && Number.isFinite(tr1.pts[0].ele) && Number.isFinite(tr2.pts[0].eleRaw)){
+      off = tr1.pts[0].ele - tr2.pts[0].eleRaw;
+    }
+    for (const p of tr2.pts) p.ele = p.eleRaw + off;
   }
 
   file1.addEventListener("change", () => loadFile(file1, 1).catch(e=>alert(`GPX#1: ${e.message}`)));
@@ -934,8 +1199,18 @@
     update();
   });
 
+  viewMode.addEventListener("change", () => {
+    viewWindow.disabled = !anyTrackReady() || viewMode.value !== "window";
+    update();
+  });
+
+  viewWindow.addEventListener("input", () => {
+    update();
+  });
+
   bindWheelAdjust(offset);
   bindWheelAdjust(time);
+  bindWheelAdjust(viewWindow);
 
   // Play / pause
   playBtn.addEventListener("click", () => {
