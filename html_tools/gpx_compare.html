@@ -22,8 +22,14 @@
     :root { --bg:#0b0f14; --fg:#e6edf3; --muted:#9aa4af; --panel:#111824; --line:#223043; --trk1:#57c7ff; --trk2:#ffb457; }
     html,body { height:100%; margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--fg); }
     .app { display:grid; grid-template-columns: 1fr 420px; grid-template-rows: 1fr auto; height:100%; }
-    #map { grid-column:1; grid-row:1; }
-    .right { grid-column:2; grid-row:1 / span 2; display:flex; flex-direction:column; gap:12px; padding:12px; border-left:1px solid var(--line); background:linear-gradient(180deg, #0b0f14, #0b0f14 60%, #0a0d12); }
+    .leftPane { grid-column:1; grid-row:1; position:relative; overflow:hidden; }
+    #map { position:absolute; inset:0; width:100%; height:100%; z-index:1; }
+    #stats { position:absolute; inset:0; overflow:auto; padding:14px; background:var(--bg); z-index:2; display:block; }
+    .leftPane.viewMap #stats { display:none; }
+    .leftPane.viewStats #map { visibility:hidden; }
+    .leftToolbar { position:absolute; top:8px; right:8px; z-index:1000; display:flex; gap:6px; background:rgba(11,15,20,0.85); padding:6px; border-radius:10px; border:1px solid var(--line); }
+    .leftToolbar .btn.active { background:#1c2a3d; border-color:#3a5170; color:#cfe6ff; }
+    .right { grid-column:2; grid-row:1 / span 2; display:flex; flex-direction:column; gap:12px; padding:12px; border-left:1px solid var(--line); background:linear-gradient(180deg, #0b0f14, #0b0f14 60%, #0a0d12); overflow-y:auto; min-height:0; }
     .bottom { grid-column:1; grid-row:2; padding:10px 12px; border-top:1px solid var(--line); background:rgba(17,24,36,0.65); backdrop-filter: blur(6px); }
     .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px; }
     .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
@@ -54,11 +60,65 @@
     .barFill.trk2 { background:var(--trk2); }
     .barTrack .zeroLine { position:absolute; left:50%; top:0; bottom:0; width:1px; background:rgba(154,164,175,0.45); }
     .barVal { font-size:11px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align:right; }
+
+    /* Segment marker on map */
+    .segMarker { background:transparent !important; border:none !important; }
+    .segMarker .segDot { width:12px; height:12px; border-radius:50%; background:#ffe066; border:2px solid #1a1f2a; box-shadow:0 0 0 1px #ffe06688; }
+    .segMarker .segLabel { position:absolute; left:14px; top:-2px; white-space:nowrap; background:rgba(11,15,20,0.85); color:#fff; padding:2px 6px; border-radius:6px; border:1px solid var(--line); font-size:11px; font-family: ui-monospace, monospace; }
+
+    /* Intermediate points list */
+    .ptList { display:flex; flex-direction:column; gap:6px; max-height:220px; overflow:auto; margin-top:8px; }
+    .ptItem { display:grid; grid-template-columns: 1fr 60px 24px; align-items:center; gap:6px; padding:4px 6px; border:1px solid var(--line); border-radius:8px; background:#0d1622; }
+    .ptItem input[type="text"] { background:#0a121c; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:4px 6px; font-family: ui-monospace, monospace; font-size:11px; width:100%; }
+    .ptItem .ptAlign { font-size:11px; padding:3px 6px; border-radius:6px; border:1px solid var(--line); background:#101a28; color:var(--fg); cursor:pointer; }
+    .ptItem .ptDel { font-size:12px; padding:3px 4px; border-radius:6px; border:1px solid var(--line); background:#181016; color:#e88; cursor:pointer; line-height:1; }
+    .ptHint { font-size:11px; color:var(--muted); margin-top:4px; }
+    .ptMeta { font-size:10px; color:var(--muted); font-family: ui-monospace, monospace; }
+
+    /* Stats panel */
+    .segTable { width:100%; border-collapse:collapse; font-size:12px; }
+    .segTable th, .segTable td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    .segTable th { color:var(--muted); font-weight:600; background:#0d1622; position:sticky; top:0; }
+    .segTable tbody tr.segRow { cursor:pointer; }
+    .segTable tbody tr.segRow:hover { background:rgba(87,199,255,0.06); }
+    .segTable tbody tr.segRow.open { background:rgba(87,199,255,0.10); }
+    .segTable td.metric { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .segTable td.metric .v1 { color:var(--trk1); display:block; }
+    .segTable td.metric .v2 { color:var(--trk2); display:block; }
+    .segExpand { background:#0a121c; padding:10px; }
+    .segExpand .segOpts { display:flex; gap:14px; flex-wrap:wrap; align-items:center; margin-bottom:8px; font-size:12px; color:var(--muted); }
+    .segExpand .segOpts label { display:inline-flex; align-items:center; gap:4px; margin:0; color:var(--muted); }
+    .segExpand .segGraphs { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .segExpand .segGraph { background:#0b121c; border:1px solid var(--line); border-radius:8px; padding:6px; position:relative; }
+    .segExpand .segGraph .gTitle { font-size:11px; color:var(--muted); margin-bottom:4px; font-family: ui-monospace, monospace; }
+    .segExpand canvas { width:100%; height:160px; background:#0a121c; border:1px solid var(--line); border-radius:6px; display:block; }
+    .segExpand .gTooltip { position:absolute; pointer-events:none; background:rgba(11,15,20,0.92); border:1px solid var(--line); padding:4px 6px; border-radius:6px; font-size:11px; font-family:ui-monospace,monospace; white-space:nowrap; transform:translate(-50%, 0); z-index:5; }
+    .segExpand .gTooltip[hidden] { display:none; }
+    .segExpand .gTooltip .tt-x { color:var(--muted); margin-bottom:2px; }
+    .segExpand .gTooltip .tt-row { display:flex; align-items:center; gap:6px; }
+    .segExpand .gTooltip .tt-sw { display:inline-block; width:8px; height:8px; border-radius:50%; }
+    .segTable td.metric .diff { display:block; font-size:10px; color:var(--muted); }
+    .segTable td.metric .diff.pos { color:#a3e3a3; }
+    .segTable td.metric .diff.neg { color:#e3a3a3; }
   </style>
 </head>
 <body>
   <div class="app">
-    <div id="map"></div>
+    <div class="leftPane viewMap">
+      <div id="map"></div>
+      <div id="stats">
+        <div class="row" style="justify-content:space-between; margin-bottom:8px;">
+          <div style="font-weight:700;">Segment statistics</div>
+          <div class="small" id="statsHint">Click a row to expand graphs.</div>
+        </div>
+        <div id="segTableWrap"></div>
+      </div>
+      <div class="leftToolbar">
+        <button id="viewMapBtn" class="btn active">Map</button>
+        <button id="viewStatsBtn" class="btn">Stats</button>
+        <button id="addPtBtn" class="btn" disabled>+ Add point</button>
+      </div>
+    </div>
 
     <div class="right">
       <div class="card">
@@ -91,6 +151,19 @@
         <div class="row" style="justify-content:space-between;">
           <div class="small mono">offset = <span id="offsetVal">0</span> s</div>
           <button id="autoOffsetBtn" class="btn" disabled>Auto offset (start times)</button>
+        </div>
+        <div style="margin-top:10px; border-top:1px solid var(--line); padding-top:8px;">
+          <div class="row" style="justify-content:space-between;">
+            <label style="margin-bottom:0;">Intermediate points</label>
+            <div class="row" style="gap:4px;">
+              <button id="ptExportBtn" class="btn" style="padding:4px 8px; font-size:11px;" disabled>Export</button>
+              <button id="ptImportBtn" class="btn" style="padding:4px 8px; font-size:11px;" disabled>Import</button>
+              <button id="ptClearBtn" class="btn" style="padding:4px 8px; font-size:11px;" disabled>Clear</button>
+            </div>
+          </div>
+          <div class="ptHint">Toggle "+ Add point" on the map, then click on the map to drop points. Click a point below to align tracks at it.</div>
+          <div id="ptList" class="ptList"></div>
+          <input id="ptImportFile" type="file" accept="application/json,.json" style="display:none;" />
         </div>
       </div>
 
@@ -489,6 +562,113 @@
     }
   }
 
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function findNearestOnTrack(track, lat, lon){
+    if (!track || !track.pts || !track.pts.length) return null;
+    let best = -1, bestD = Infinity;
+    for (let i=0;i<track.pts.length;i++){
+      const p = track.pts[i];
+      const d = haversine(p.lat, p.lon, lat, lon);
+      if (d < bestD){ bestD = d; best = i; }
+    }
+    if (best < 0) return null;
+    const p = track.pts[best];
+    return { idx: best, s: p.s, t: p.tr, ele: p.ele, dist: bestD, lat: p.lat, lon: p.lon };
+  }
+
+  function sampleAtDistance(track, s){
+    if (!track || !track.pts.length) return null;
+    const pts = track.pts;
+    const clamped = clamp(s, 0, track.sTotal);
+    if (clamped <= pts[0].s) return { lat:pts[0].lat, lon:pts[0].lon, ele:pts[0].ele, s:clamped, tr:pts[0].tr };
+    if (clamped >= pts[pts.length-1].s){
+      const q = pts[pts.length-1];
+      return { lat:q.lat, lon:q.lon, ele:q.ele, s:clamped, tr:q.tr };
+    }
+    let lo = 0, hi = pts.length - 1;
+    while (lo <= hi){
+      const mid = (lo+hi)>>1;
+      if (pts[mid].s <= clamped) lo = mid+1; else hi = mid-1;
+    }
+    const i = Math.max(0, Math.min(hi, pts.length-2));
+    const a = pts[i], b = pts[i+1];
+    const ds = b.s - a.s;
+    const f = ds > 0 ? (clamped - a.s) / ds : 0;
+    return {
+      lat: a.lat + f*(b.lat - a.lat),
+      lon: a.lon + f*(b.lon - a.lon),
+      ele: a.ele + f*(b.ele - a.ele),
+      s: clamped,
+      tr: a.tr + f*(b.tr - a.tr)
+    };
+  }
+
+  function resnapSegPoint(sp){
+    if (hasTrack1()){
+      const n = findNearestOnTrack(tr1, sp.lat, sp.lon);
+      sp.s1 = n ? n.s : NaN; sp.t1 = n ? n.t : NaN; sp.ele1 = n ? n.ele : NaN;
+    } else { sp.s1 = NaN; sp.t1 = NaN; sp.ele1 = NaN; }
+    if (hasTrack2()){
+      const n = findNearestOnTrack(tr2, sp.lat, sp.lon);
+      sp.s2 = n ? n.s : NaN; sp.t2 = n ? n.t : NaN; sp.ele2 = n ? n.ele : NaN;
+    } else { sp.s2 = NaN; sp.t2 = NaN; sp.ele2 = NaN; }
+  }
+
+  function resnapAllSegPoints(){
+    for (const sp of segPoints) resnapSegPoint(sp);
+    sortSegPoints();
+  }
+
+  function sortSegPoints(){
+    segPoints.sort((a, b) => {
+      const sa = Number.isFinite(a.s1) ? a.s1 : (Number.isFinite(a.s2) ? a.s2 : Infinity);
+      const sb = Number.isFinite(b.s1) ? b.s1 : (Number.isFinite(b.s2) ? b.s2 : Infinity);
+      return sa - sb;
+    });
+  }
+
+  function addSegPoint(lat, lon, name){
+    const id = ++segPointId;
+    const sp = { id, name: name || `P${id}`, lat, lon, s1:NaN, t1:NaN, ele1:NaN, s2:NaN, t2:NaN, ele2:NaN };
+    resnapSegPoint(sp);
+    segPoints.push(sp);
+    sortSegPoints();
+    onSegPointsChanged();
+    return sp;
+  }
+
+  function removeSegPoint(id){
+    const i = segPoints.findIndex(p => p.id === id);
+    if (i < 0) return;
+    segPoints.splice(i, 1);
+    openSegRows.clear();
+    onSegPointsChanged();
+  }
+
+  function clearSegPoints(){
+    segPoints.length = 0;
+    openSegRows.clear();
+    onSegPointsChanged();
+  }
+
+  function onSegPointsChanged(){
+    renderSegMarkers();
+    renderPtList();
+    if (currentView === "stats") renderStatsView();
+    updatePtControls();
+  }
+
+  function updatePtControls(){
+    const ready = anyTrackReady();
+    addPtBtn.disabled = !ready;
+    ptExportBtn.disabled = !segPoints.length;
+    ptImportBtn.disabled = !ready;
+    ptClearBtn.disabled = !segPoints.length;
+  }
+
   // ---------- UI + Map ----------
   const map = L.map("map", { zoomControl: true }).setView([46.05, 14.5], 11);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -546,6 +726,18 @@
   const ectx = elevCanvas.getContext("2d");
   const ictx = inclCanvas.getContext("2d");
 
+  const viewMapBtn = document.getElementById("viewMapBtn");
+  const viewStatsBtn = document.getElementById("viewStatsBtn");
+  const addPtBtn = document.getElementById("addPtBtn");
+  const statsEl = document.getElementById("stats");
+  const segTableWrap = document.getElementById("segTableWrap");
+
+  const ptList = document.getElementById("ptList");
+  const ptExportBtn = document.getElementById("ptExportBtn");
+  const ptImportBtn = document.getElementById("ptImportBtn");
+  const ptClearBtn = document.getElementById("ptClearBtn");
+  const ptImportFile = document.getElementById("ptImportFile");
+
   const rootStyles = getComputedStyle(document.documentElement);
   const TRACK1_COLOR = rootStyles.getPropertyValue("--trk1").trim() || "#57c7ff";
   const TRACK2_COLOR = rootStyles.getPropertyValue("--trk2").trim() || "#ffb457";
@@ -555,6 +747,14 @@
   let mk1=null, mk2=null, linkLine=null;
 
   let playTimer = null;
+
+  // Intermediate points (Strava-like segments)
+  const segPoints = [];           // {id, name, lat, lon, s1, t1, ele1, s2, t2, ele2}
+  let segPointId = 0;
+  const segMarkers = new Map();   // id -> L.marker
+  let addPointMode = false;
+  let currentView = "map";        // "map" | "stats"
+  const openSegRows = new Set();  // segment indexes currently expanded
 
   // Simple styles (Leaflet colors are default-ish)
   function makeCircle(latlng, color){
@@ -581,6 +781,7 @@
     autoOffsetBtn.disabled = !bothTracksReady();
     viewMode.disabled = !anyReady;
     viewWindow.disabled = !anyReady || viewMode.value !== "window";
+    updatePtControls();
 
     const has1 = hasTrack1();
     const has2 = hasTrack2();
@@ -680,6 +881,157 @@
     if (!bothTracksReady()) return;
     offset.value = "0";
     offset.dispatchEvent(new Event("input"));
+  });
+
+  // ---------- Intermediate points: markers, list, view ----------
+  function renderSegMarkers(){
+    for (const m of segMarkers.values()) map.removeLayer(m);
+    segMarkers.clear();
+    for (const sp of segPoints){
+      const icon = L.divIcon({
+        className: 'segMarker',
+        html: `<div class="segDot"></div><div class="segLabel">${escapeHtml(sp.name)}</div>`,
+        iconSize: [12,12],
+        iconAnchor: [6,6]
+      });
+      const m = L.marker([sp.lat, sp.lon], { icon, draggable:false }).addTo(map);
+      m.on("click", () => alignAtSegPoint(sp));
+      segMarkers.set(sp.id, m);
+    }
+  }
+
+  function renderPtList(){
+    ptList.innerHTML = "";
+    if (!segPoints.length){
+      const empty = document.createElement("div");
+      empty.className = "ptHint";
+      empty.textContent = "No intermediate points yet.";
+      ptList.appendChild(empty);
+      return;
+    }
+    for (const sp of segPoints){
+      const row = document.createElement("div");
+      row.className = "ptItem";
+      const nameWrap = document.createElement("div");
+      const nameIn = document.createElement("input");
+      nameIn.type = "text";
+      nameIn.value = sp.name;
+      nameIn.addEventListener("change", () => {
+        sp.name = nameIn.value.trim() || sp.name;
+        renderSegMarkers();
+        if (currentView === "stats") renderStatsView();
+      });
+      nameWrap.appendChild(nameIn);
+      const meta = document.createElement("div");
+      meta.className = "ptMeta";
+      const km1 = Number.isFinite(sp.s1) ? (sp.s1/1000).toFixed(2)+"km" : "—";
+      const km2 = Number.isFinite(sp.s2) ? (sp.s2/1000).toFixed(2)+"km" : "—";
+      meta.innerHTML = `<span class="trk1Txt">${km1}</span> · <span class="trk2Txt">${km2}</span>`;
+      nameWrap.appendChild(meta);
+      row.appendChild(nameWrap);
+
+      const align = document.createElement("button");
+      align.className = "ptAlign";
+      align.textContent = "Align";
+      align.title = "Set offset so tracks align at this point";
+      align.disabled = !bothTracksReady() || !Number.isFinite(sp.t1) || !Number.isFinite(sp.t2);
+      align.addEventListener("click", () => alignAtSegPoint(sp));
+      row.appendChild(align);
+
+      const del = document.createElement("button");
+      del.className = "ptDel";
+      del.textContent = "✕";
+      del.title = "Remove point";
+      del.addEventListener("click", () => removeSegPoint(sp.id));
+      row.appendChild(del);
+
+      ptList.appendChild(row);
+    }
+  }
+
+  function alignAtSegPoint(sp){
+    if (!Number.isFinite(sp.t1) || !Number.isFinite(sp.t2)) return;
+    const desired = Math.round((sp.t2 - sp.t1) / 1000);
+    // Expand slider range if needed
+    let mn = parseInt(offset.min,10), mx = parseInt(offset.max,10);
+    if (desired < mn){ mn = desired; offset.min = String(mn); }
+    if (desired > mx){ mx = desired; offset.max = String(mx); }
+    offset.value = String(desired);
+    // Move time marker to t1 so the visualisation lands at the point
+    const tMin = parseInt(time.min,10), tMax = parseInt(time.max,10);
+    const tCur = clamp(Math.round(sp.t1), tMin, tMax);
+    time.value = String(tCur);
+    offset.dispatchEvent(new Event("input"));
+    time.dispatchEvent(new Event("input"));
+  }
+
+  function exportSegPointsJson(){
+    const data = segPoints.map(sp => ({ name: sp.name, lat: sp.lat, lon: sp.lon }));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "gpx_compare_points.json";
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+  }
+
+  async function importSegPointsJson(file){
+    try {
+      const txt = await file.text();
+      const arr = JSON.parse(txt);
+      if (!Array.isArray(arr)) throw new Error("JSON must be an array of points.");
+      clearSegPoints();
+      for (const obj of arr){
+        const lat = Number(obj.lat), lon = Number(obj.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+        addSegPoint(lat, lon, obj.name);
+      }
+    } catch (e){
+      alert("Import failed: " + e.message);
+    }
+  }
+
+  function setView(v){
+    currentView = v === "stats" ? "stats" : "map";
+    viewMapBtn.classList.toggle("active", currentView === "map");
+    viewStatsBtn.classList.toggle("active", currentView === "stats");
+    const pane = statsEl.parentElement; // .leftPane
+    pane.classList.toggle("viewStats", currentView === "stats");
+    pane.classList.toggle("viewMap",   currentView === "map");
+    if (currentView === "stats"){
+      renderStatsView();
+    } else {
+      // Leaflet needs a size invalidation when shown again
+      setTimeout(() => map.invalidateSize(), 0);
+    }
+  }
+
+  function setAddPointMode(on){
+    addPointMode = !!on;
+    addPtBtn.classList.toggle("active", addPointMode);
+    addPtBtn.textContent = addPointMode ? "+ Add point: ON" : "+ Add point";
+    map.getContainer().style.cursor = addPointMode ? "crosshair" : "";
+  }
+
+  map.on("click", (ev) => {
+    if (!addPointMode || !anyTrackReady()) return;
+    addSegPoint(ev.latlng.lat, ev.latlng.lng);
+  });
+
+  viewMapBtn.addEventListener("click", () => setView("map"));
+  viewStatsBtn.addEventListener("click", () => setView("stats"));
+  addPtBtn.addEventListener("click", () => setAddPointMode(!addPointMode));
+
+  ptExportBtn.addEventListener("click", exportSegPointsJson);
+  ptImportBtn.addEventListener("click", () => ptImportFile.click());
+  ptImportFile.addEventListener("change", () => {
+    const f = ptImportFile.files && ptImportFile.files[0];
+    if (f) importSegPointsJson(f);
+    ptImportFile.value = "";
+  });
+  ptClearBtn.addEventListener("click", () => {
+    if (segPoints.length && confirm("Remove all intermediate points?")) clearSegPoints();
   });
 
   // ---------- Plotting ----------
@@ -1143,11 +1495,15 @@
     if (!tr.pts.length) throw new Error("No trkpt/time points found in GPX.");
     if (which === 1) tr1 = tr; else tr2 = tr;
     applyTrack2HeightCorrection();
+    resnapAllSegPoints();
     updateMeta();
     updateControls();
     updateTimeRange();
     updateViewWindowRange();
     drawTracks();
+    renderSegMarkers();
+    renderPtList();
+    if (currentView === "stats") renderStatsView();
     // fixed offset range
     offset.min = "-15000";
     offset.max = "15000";
@@ -1168,14 +1524,41 @@
     viewWindowVal.textContent = viewWindow.value;
   }
 
-  function applyTrack2HeightCorrection(){
-    if (!tr2 || !tr2.pts || !tr2.pts.length) return;
-    // reset to raw, then offset if track1 is available
-    let off = 0;
-    if (hasTrack1() && Number.isFinite(tr1.pts[0].ele) && Number.isFinite(tr2.pts[0].eleRaw)){
-      off = tr1.pts[0].ele - tr2.pts[0].eleRaw;
+  function smoothEleField(track, windowMs){
+    if (!track || !track.pts || track.pts.length < 2) return;
+    const pts = track.pts;
+    const n = pts.length;
+    const half = windowMs / 2;
+    const out = new Array(n);
+    let lo = 0, hi = 0;
+    for (let i = 0; i < n; i++){
+      const t = pts[i].tr;
+      while (lo < n && pts[lo].tr < t - half) lo++;
+      while (hi < n && pts[hi].tr <= t + half) hi++;
+      let sum = 0, cnt = 0;
+      for (let j = lo; j < hi; j++){
+        if (Number.isFinite(pts[j].ele)){ sum += pts[j].ele; cnt++; }
+      }
+      out[i] = cnt > 0 ? sum / cnt : pts[i].ele;
     }
-    for (const p of tr2.pts) p.ele = p.eleRaw + off;
+    for (let i = 0; i < n; i++) pts[i].ele = out[i];
+  }
+
+  function applyTrack2HeightCorrection(){
+    // Reset both tracks' working elevations from raw, apply tr2 offset, then 5 s smoothing.
+    const ELE_SMOOTH_MS = 5000;
+    if (tr1 && tr1.pts){
+      for (const p of tr1.pts) p.ele = p.eleRaw;
+      smoothEleField(tr1, ELE_SMOOTH_MS);
+    }
+    if (tr2 && tr2.pts && tr2.pts.length){
+      let off = 0;
+      if (hasTrack1() && Number.isFinite(tr1.pts[0].ele) && Number.isFinite(tr2.pts[0].eleRaw)){
+        off = tr1.pts[0].ele - tr2.pts[0].eleRaw;
+      }
+      for (const p of tr2.pts) p.ele = p.eleRaw + off;
+      smoothEleField(tr2, ELE_SMOOTH_MS);
+    }
   }
 
   file1.addEventListener("change", () => loadFile(file1, 1).catch(e=>alert(`GPX#1: ${e.message}`)));
@@ -1230,8 +1613,592 @@
     if (playTimer){ clearInterval(playTimer); playTimer=null; }
   });
 
+  // ---------- Segments: build, stats, table, expanded graphs ----------
+  function boundaryPoint(start){
+    return {
+      name: start ? "Start" : "End",
+      lat: hasTrack1() ? (start ? tr1.pts[0].lat : tr1.pts[tr1.pts.length-1].lat)
+            : (hasTrack2() ? (start ? tr2.pts[0].lat : tr2.pts[tr2.pts.length-1].lat) : 0),
+      lon: hasTrack1() ? (start ? tr1.pts[0].lon : tr1.pts[tr1.pts.length-1].lon)
+            : (hasTrack2() ? (start ? tr2.pts[0].lon : tr2.pts[tr2.pts.length-1].lon) : 0),
+      s1: hasTrack1() ? (start ? 0 : tr1.sTotal) : NaN,
+      s2: hasTrack2() ? (start ? 0 : tr2.sTotal) : NaN,
+      t1: hasTrack1() ? (start ? 0 : tr1.r1) : NaN,
+      t2: hasTrack2() ? (start ? 0 : tr2.r1) : NaN,
+      ele1: hasTrack1() ? (start ? tr1.pts[0].ele : tr1.pts[tr1.pts.length-1].ele) : NaN,
+      ele2: hasTrack2() ? (start ? tr2.pts[0].ele : tr2.pts[tr2.pts.length-1].ele) : NaN
+    };
+  }
+
+  function pointSequence(){
+    return [boundaryPoint(true), ...segPoints, boundaryPoint(false)];
+  }
+
+  function segStats(from, to){
+    const s = {
+      t1: hasTrack1() ? (to.t1 - from.t1) : NaN,
+      t2: hasTrack2() ? (to.t2 - from.t2) : NaN,
+      d1: hasTrack1() ? (to.s1 - from.s1) : NaN,
+      d2: hasTrack2() ? (to.s2 - from.s2) : NaN,
+      dh1: hasTrack1() ? (to.ele1 - from.ele1) : NaN,
+      dh2: hasTrack2() ? (to.ele2 - from.ele2) : NaN
+    };
+    s.v1   = (Number.isFinite(s.d1)  && s.t1 > 0) ? (s.d1 / (s.t1/1000)) * 3.6 : NaN;
+    s.v2   = (Number.isFinite(s.d2)  && s.t2 > 0) ? (s.d2 / (s.t2/1000)) * 3.6 : NaN;
+    s.vv1  = (Number.isFinite(s.dh1) && s.t1 > 0) ? (s.dh1 / (s.t1/3600000))   : NaN;
+    s.vv2  = (Number.isFinite(s.dh2) && s.t2 > 0) ? (s.dh2 / (s.t2/3600000))   : NaN;
+    s.inc1 = (Number.isFinite(s.dh1) && s.d1 > 0) ? (s.dh1 / s.d1) * 100        : NaN;
+    s.inc2 = (Number.isFinite(s.dh2) && s.d2 > 0) ? (s.dh2 / s.d2) * 100        : NaN;
+    return s;
+  }
+
+  function fmtKm(m){ return Number.isFinite(m) ? (m/1000).toFixed(2)+" km" : "—"; }
+  function fmtDur(ms){
+    if (!Number.isFinite(ms) || ms < 0) return "—";
+    const s = Math.round(ms/1000);
+    const hh = Math.floor(s/3600), mm = Math.floor((s%3600)/60), ss = s%60;
+    return hh > 0 ? `${hh}h${String(mm).padStart(2,"0")}m` : `${mm}m${String(ss).padStart(2,"0")}s`;
+  }
+  function fmt1(v, suf){ return Number.isFinite(v) ? `${v.toFixed(1)}${suf}` : "—"; }
+  function fmt0(v, suf){ return Number.isFinite(v) ? `${Math.round(v)}${suf}` : "—"; }
+  function fmtSignedDurMs(ms){
+    if (!Number.isFinite(ms)) return "—";
+    const sign = ms < 0 ? "−" : (ms > 0 ? "+" : "");
+    return sign + fmtDur(Math.abs(ms));
+  }
+  function diffCell(v1, v2, fmtAbs, invertColor){
+    if (!Number.isFinite(v1) || !Number.isFinite(v2)) return "";
+    const d = v2 - v1;
+    const good = invertColor ? d < 0 : d > 0;
+    const bad  = invertColor ? d > 0 : d < 0;
+    const cls = good ? "pos" : (bad ? "neg" : "");
+    const rel = (v1 !== 0 && Number.isFinite(v1))
+      ? ` (${d >= 0 ? "+" : ""}${(d/v1*100).toFixed(1)}%)`
+      : "";
+    return `<span class="diff ${cls}">Δ ${fmtAbs(d)}${rel}</span>`;
+  }
+
+  function renderStatsView(){
+    segTableWrap.innerHTML = "";
+    if (!anyTrackReady()){
+      segTableWrap.innerHTML = `<div class="small">Load at least one GPX track to see segment statistics.</div>`;
+      return;
+    }
+    const seq = pointSequence();
+    const segs = [];
+    for (let i=1;i<seq.length;i++) segs.push({ idx:i-1, from:seq[i-1], to:seq[i] });
+
+    const table = document.createElement("table");
+    table.className = "segTable";
+    table.innerHTML = `
+      <thead><tr>
+        <th>Segment</th>
+        <th>Distance</th>
+        <th>Time</th>
+        <th>Δh (m)</th>
+        <th>Avg v (km/h)</th>
+        <th>Avg v↕ (m/h)</th>
+        <th>Avg incl (%)</th>
+      </tr></thead><tbody></tbody>`;
+    const tbody = table.querySelector("tbody");
+
+    for (const seg of segs){
+      const s = segStats(seg.from, seg.to);
+      const row = document.createElement("tr");
+      row.className = "segRow";
+      if (openSegRows.has(seg.idx)) row.classList.add("open");
+      row.innerHTML = `
+        <td>${escapeHtml(seg.from.name)} → ${escapeHtml(seg.to.name)}</td>
+        <td class="metric"><span class="v1">${fmtKm(s.d1)}</span><span class="v2">${fmtKm(s.d2)}</span>${diffCell(s.d1, s.d2, d => `${d>=0?"+":"−"}${(Math.abs(d)/1000).toFixed(2)} km`)}</td>
+        <td class="metric"><span class="v1">${fmtDur(s.t1)}</span><span class="v2">${fmtDur(s.t2)}</span>${diffCell(s.t1, s.t2, fmtSignedDurMs, true)}</td>
+        <td class="metric"><span class="v1">${fmt1(s.dh1,"")}</span><span class="v2">${fmt1(s.dh2,"")}</span>${diffCell(s.dh1, s.dh2, d => `${d>=0?"+":""}${d.toFixed(1)}`)}</td>
+        <td class="metric"><span class="v1">${fmt1(s.v1,"")}</span><span class="v2">${fmt1(s.v2,"")}</span>${diffCell(s.v1, s.v2, d => `${d>=0?"+":""}${d.toFixed(1)}`)}</td>
+        <td class="metric"><span class="v1">${fmt0(s.vv1,"")}</span><span class="v2">${fmt0(s.vv2,"")}</span>${diffCell(s.vv1, s.vv2, d => `${d>=0?"+":""}${Math.round(d)}`)}</td>
+        <td class="metric"><span class="v1">${fmt1(s.inc1,"")}</span><span class="v2">${fmt1(s.inc2,"")}</span>${diffCell(s.inc1, s.inc2, d => `${d>=0?"+":""}${d.toFixed(1)}`)}</td>`;
+      row.addEventListener("click", () => toggleSegRow(seg.idx));
+      tbody.appendChild(row);
+
+      if (openSegRows.has(seg.idx)){
+        const exp = document.createElement("tr");
+        exp.className = "segExpandRow";
+        const td = document.createElement("td");
+        td.colSpan = 7;
+        td.className = "segExpand";
+        td.appendChild(buildSegExpand(seg));
+        exp.appendChild(td);
+        tbody.appendChild(exp);
+      }
+    }
+    segTableWrap.appendChild(table);
+  }
+
+  function toggleSegRow(idx){
+    if (openSegRows.has(idx)) openSegRows.delete(idx);
+    else openSegRows.add(idx);
+    renderStatsView();
+  }
+
+  function buildSegExpand(seg){
+    const wrap = document.createElement("div");
+    const opts = document.createElement("div");
+    opts.className = "segOpts";
+    opts.innerHTML = `
+      <label>x-axis:
+        <select class="segXAxis btn" style="padding:3px 6px;">
+          <option value="time" selected>time</option>
+          <option value="distance">distance</option>
+        </select>
+      </label>
+      <label><input type="checkbox" class="segH2Match" checked> match h2 start to h1 start</label>
+      <span style="flex:1"></span>
+      <span class="segSeries">
+        <label><input type="checkbox" class="segY" value="height" checked> height</label>
+        <label><input type="checkbox" class="segY" value="velocity" checked> velocity</label>
+        <label><input type="checkbox" class="segY" value="vvelocity"> v↕</label>
+        <label><input type="checkbox" class="segY" value="incl"> incl</label>
+        <label><input type="checkbox" class="segY" value="distAdv"> lateral dist</label>
+        <label><input type="checkbox" class="segY" value="heightAdv"> height adv</label>
+      </span>`;
+    wrap.appendChild(opts);
+
+    const graphs = document.createElement("div");
+    graphs.className = "segGraphs";
+    wrap.appendChild(graphs);
+
+    function rerender(){
+      const xAxis = opts.querySelector(".segXAxis").value;
+      const h2Match = opts.querySelector(".segH2Match").checked;
+      const ys = [...opts.querySelectorAll(".segY")].filter(c => c.checked).map(c => c.value);
+      drawSegGraphs(graphs, seg, { xAxis, h2Match, ys });
+    }
+    opts.addEventListener("change", rerender);
+    // Defer so canvases have layout (table is appended after this returns)
+    requestAnimationFrame(rerender);
+    return wrap;
+  }
+
+  function sampleSegment(seg, N, xAxis){
+    // Sample each track independently over its own segment span, so the
+    // resulting series end at each track's actual elapsed time/distance
+    // (a faster track produces a shorter line, not a stretched one).
+    // Returns { s1: { pts:[{x,p}], span }, s2: { pts:[{x,p}], span }, xAxis }
+    const from = seg.from, to = seg.to;
+    function sampleTrack(trackNum){
+      const tr = trackNum === 1 ? tr1 : tr2;
+      const ok = trackNum === 1 ? hasTrack1() : hasTrack2();
+      if (!ok) return { pts: [], span: 0 };
+      if (xAxis === "time"){
+        const a = trackNum === 1 ? from.t1 : from.t2;
+        const b = trackNum === 1 ? to.t1 : to.t2;
+        if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return { pts: [], span: 0 };
+        const span = (b - a) / 1000; // seconds
+        const pts = [];
+        for (let i=0;i<N;i++){
+          const f = N>1 ? i/(N-1) : 0;
+          const p = sampleAtRelTime(tr, a + f*(b - a));
+          pts.push({ x: f*span, p });
+        }
+        return { pts, span };
+      } else {
+        const a = trackNum === 1 ? from.s1 : from.s2;
+        const b = trackNum === 1 ? to.s1 : to.s2;
+        if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return { pts: [], span: 0 };
+        const span = b - a; // meters
+        const pts = [];
+        for (let i=0;i<N;i++){
+          const f = N>1 ? i/(N-1) : 0;
+          const p = sampleAtDistance(tr, a + f*(b - a));
+          pts.push({ x: f*span, p });
+        }
+        return { pts, span };
+      }
+    }
+    return { s1: sampleTrack(1), s2: sampleTrack(2), xAxis };
+  }
+
+  function buildSeriesForY(yKey, samples, seg, segHelpers){
+    // Returns { name, unit, lines: [{color, points:[{x,y}]}] }
+    const { h2Shift } = segHelpers;
+    const { s1, s2, xAxis } = samples;
+    function mapTrack(trackPts, mapper){
+      const pts = [];
+      for (const {x, p} of trackPts){
+        if (!p) continue;
+        const y = mapper(p);
+        if (Number.isFinite(y)) pts.push({ x, y });
+      }
+      return pts;
+    }
+    // For joint series (heightAdv, distAdv): sample both tracks at the same
+    // elapsed time/distance from segment start, over [0, min(span1, span2)].
+    function jointSamples(N){
+      if (!s1.span || !s2.span) return null;
+      const useTime = xAxis === "time";
+      const maxX = Math.min(s1.span, s2.span);
+      if (!(maxX > 0)) return null;
+      const a1 = useTime ? seg.from.t1 : seg.from.s1;
+      const a2 = useTime ? seg.from.t2 : seg.from.s2;
+      if (!Number.isFinite(a1) || !Number.isFinite(a2)) return null;
+      const out = [];
+      for (let i=0;i<N;i++){
+        const f = N>1 ? i/(N-1) : 0;
+        const x = f * maxX;
+        let p1, p2;
+        if (useTime){
+          p1 = sampleAtRelTime(tr1, a1 + x*1000);
+          p2 = sampleAtRelTime(tr2, a2 + x*1000);
+        } else {
+          p1 = sampleAtDistance(tr1, a1 + x);
+          p2 = sampleAtDistance(tr2, a2 + x);
+        }
+        out.push({ x, p1, p2 });
+      }
+      return out;
+    }
+    switch (yKey){
+      case "height":
+        return { name: "Height (m)", unit: "m", lines: [
+          { color: TRACK1_COLOR, points: mapTrack(s1.pts, p => p.ele) },
+          { color: TRACK2_COLOR, points: mapTrack(s2.pts, p => p.ele + h2Shift) }
+        ]};
+      case "velocity":
+        return { name: "Velocity (km/h)", unit: "km/h", lines: [
+          { color: TRACK1_COLOR, points: mapTrack(s1.pts, p => {
+              const v = localVelocityAtRelTime(tr1, p.tr); return v ? v.vKmh : NaN; }) },
+          { color: TRACK2_COLOR, points: mapTrack(s2.pts, p => {
+              const v = localVelocityAtRelTime(tr2, p.tr); return v ? v.vKmh : NaN; }) }
+        ]};
+      case "vvelocity":
+        return { name: "Vertical v (m/h)", unit: "m/h", lines: [
+          { color: TRACK1_COLOR, points: mapTrack(s1.pts, p => {
+              const v = localVerticalVelocityAtRelTime(tr1, p.tr); return v ? v.vMh : NaN; }) },
+          { color: TRACK2_COLOR, points: mapTrack(s2.pts, p => {
+              const v = localVerticalVelocityAtRelTime(tr2, p.tr); return v ? v.vMh : NaN; }) }
+        ]};
+      case "incl":
+        return { name: "Inclination (%)", unit: "%", lines: [
+          { color: TRACK1_COLOR, points: mapTrack(s1.pts, p => {
+              const inc = inclinationAtDistance(tr1, p.s, 50); return inc ? inc.gradePct : NaN; }) },
+          { color: TRACK2_COLOR, points: mapTrack(s2.pts, p => {
+              const inc = inclinationAtDistance(tr2, p.s, 50); return inc ? inc.gradePct : NaN; }) }
+        ]};
+      case "distAdv": {
+        // Lateral (geographic) separation between the two tracks sampled at the
+        // same elapsed time/distance from segment start. Zeroed at segment start.
+        if (!hasTrack1() || !hasTrack2()) return null;
+        const js = jointSamples(200);
+        if (!js) return null;
+        const line = [];
+        for (const {x, p1, p2} of js){
+          if (!p1 || !p2) continue;
+          const d = haversine(p1.lat, p1.lon, p2.lat, p2.lon);
+          if (Number.isFinite(d)) line.push({ x, y: d });
+        }
+        if (line.length){
+          const y0 = line[0].y;
+          for (const p of line) p.y -= y0;
+        }
+        return { name: "Lateral distance trk1↔trk2 (m, zeroed)", unit: "m", lines: [{ color:"#a3e3a3", points: line }] };
+      }
+      case "heightAdv": {
+        if (!hasTrack1() || !hasTrack2()) return null;
+        const js = jointSamples(200);
+        if (!js) return null;
+        const line = [];
+        const baseE1 = seg.from.ele1, baseE2 = seg.from.ele2;
+        for (const {x, p1, p2} of js){
+          if (!p1 || !p2) continue;
+          // h2Shift cancels out in the diff; anchor to 0 at segment start
+          const adv = (p1.ele - baseE1) - (p2.ele - baseE2);
+          if (Number.isFinite(adv)) line.push({ x, y: adv });
+        }
+        return { name: "Height advantage trk1−trk2 (m)", unit: "m", lines: [{ color:"#e3c4a3", points: line }] };
+      }
+    }
+    return null;
+  }
+
+  function niceTicks(min, max, target){
+    const range = max - min;
+    if (!Number.isFinite(range) || range <= 0) return [min];
+    const roughStep = range / Math.max(1, target);
+    const pow10 = Math.pow(10, Math.floor(Math.log10(roughStep)));
+    const norm = roughStep / pow10;
+    let step;
+    if (norm < 1.5) step = 1*pow10;
+    else if (norm < 3) step = 2*pow10;
+    else if (norm < 7) step = 5*pow10;
+    else step = 10*pow10;
+    const start = Math.ceil(min/step) * step;
+    const ticks = [];
+    for (let v = start; v <= max + step*1e-6; v += step){
+      ticks.push(Number(v.toFixed(10)));
+      if (ticks.length > 50) break;
+    }
+    return ticks;
+  }
+
+  function fmtXAxis(x, unit){
+    if (unit === "m"){
+      const ax = Math.abs(x);
+      if (ax >= 1000) return (x/1000).toFixed(ax >= 10000 ? 1 : 2) + " km";
+      return x.toFixed(0) + " m";
+    }
+    if (unit === "s"){
+      const ax = Math.abs(x);
+      if (ax < 60) return x.toFixed(0) + " s";
+      const sign = x < 0 ? "-" : "";
+      const a = Math.abs(x);
+      const m = Math.floor(a/60), s = Math.round(a%60);
+      return `${sign}${m}m${String(s).padStart(2,"0")}s`;
+    }
+    return x.toFixed(1);
+  }
+
+  function fmtYAxis(y){
+    const ay = Math.abs(y);
+    if (ay >= 100) return y.toFixed(0);
+    if (ay >= 10) return y.toFixed(1);
+    return y.toFixed(2);
+  }
+
+  function sampleLineAt(line, x){
+    const pts = line.points;
+    if (!pts.length) return NaN;
+    if (x <= pts[0].x) return pts[0].y;
+    if (x >= pts[pts.length-1].x) return pts[pts.length-1].y;
+    let lo = 0, hi = pts.length - 1;
+    while (hi - lo > 1){
+      const m = (lo + hi) >> 1;
+      if (pts[m].x <= x) lo = m; else hi = m;
+    }
+    const a = pts[lo], b = pts[hi];
+    const dx = b.x - a.x;
+    const f = dx > 0 ? (x - a.x) / dx : 0;
+    return a.y + f * (b.y - a.y);
+  }
+
+  function makeSegChart(canvas, tooltipEl, series, xUnit){
+    const lines = series.lines;
+    const yUnit = series.unit;
+    let xMin=+Infinity, xMax=-Infinity, yMin=+Infinity, yMax=-Infinity;
+    for (const ln of lines){
+      for (const p of ln.points){
+        if (p.x < xMin) xMin = p.x;
+        if (p.x > xMax) xMax = p.x;
+        if (p.y < yMin) yMin = p.y;
+        if (p.y > yMax) yMax = p.y;
+      }
+    }
+    if (!Number.isFinite(xMin) || !Number.isFinite(xMax) || xMin === xMax){ xMin = 0; xMax = 1; }
+    if (!Number.isFinite(yMin) || !Number.isFinite(yMax) || yMin === yMax){ yMin -= 1; yMax += 1; }
+    const yPad = (yMax - yMin) * 0.05;
+    yMin -= yPad; yMax += yPad;
+
+    const padL = 46, padR = 12, padT = 8, padB = 22;
+    let hoverX = null;
+
+    function xToPx(x, w){ return padL + (w - padL - padR) * ((x - xMin) / (xMax - xMin)); }
+    function yToPx(y, h){ return (h - padB) - (h - padT - padB) * ((y - yMin) / (yMax - yMin)); }
+    function pxToX(px, w){ return xMin + (xMax - xMin) * (px - padL) / (w - padL - padR); }
+
+    function draw(){
+      const ctx = canvas.getContext("2d");
+      const { w, h } = prepCanvas(canvas, ctx);
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.font = "10px ui-monospace, monospace";
+
+      // grid + tick labels
+      const xTicks = niceTicks(xMin, xMax, 5);
+      const yTicks = niceTicks(yMin, yMax, 4);
+
+      ctx.strokeStyle = "rgba(154,164,175,0.15)";
+      ctx.lineWidth = 1;
+      ctx.fillStyle = "rgba(154,164,175,0.85)";
+
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      for (const t of yTicks){
+        const py = yToPx(t, h);
+        if (py < padT - 0.5 || py > h - padB + 0.5) continue;
+        ctx.beginPath(); ctx.moveTo(padL, py); ctx.lineTo(w - padR, py); ctx.stroke();
+        ctx.fillText(fmtYAxis(t), padL - 4, py);
+      }
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      for (const t of xTicks){
+        const px = xToPx(t, w);
+        if (px < padL - 0.5 || px > w - padR + 0.5) continue;
+        ctx.beginPath(); ctx.moveTo(px, padT); ctx.lineTo(px, h - padB); ctx.stroke();
+        ctx.fillText(fmtXAxis(t, xUnit), px, h - padB + 4);
+      }
+
+      // axes
+      ctx.strokeStyle = "rgba(154,164,175,0.45)";
+      ctx.beginPath();
+      ctx.moveTo(padL, padT);
+      ctx.lineTo(padL, h - padB);
+      ctx.lineTo(w - padR, h - padB);
+      ctx.stroke();
+
+      // y unit label (top-left)
+      ctx.fillStyle = "rgba(154,164,175,0.65)";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText(yUnit, 4, 2);
+
+      // zero line
+      if (yMin < 0 && yMax > 0){
+        const zy = yToPx(0, h);
+        ctx.strokeStyle = "rgba(154,164,175,0.55)";
+        ctx.setLineDash([3,4]);
+        ctx.beginPath(); ctx.moveTo(padL, zy); ctx.lineTo(w - padR, zy); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // clip to plot area
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(padL, padT, w - padL - padR, h - padT - padB);
+      ctx.clip();
+
+      // lines
+      ctx.lineWidth = 1.6;
+      for (const ln of lines){
+        if (!ln.points.length) continue;
+        ctx.strokeStyle = ln.color;
+        ctx.beginPath();
+        for (let i = 0; i < ln.points.length; i++){
+          const px = xToPx(ln.points[i].x, w);
+          const py = yToPx(ln.points[i].y, h);
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+
+      // hover cursor + dots
+      if (hoverX != null && hoverX >= xMin && hoverX <= xMax){
+        const px = xToPx(hoverX, w);
+        ctx.strokeStyle = "rgba(230,237,243,0.55)";
+        ctx.setLineDash([3,3]);
+        ctx.beginPath(); ctx.moveTo(px, padT); ctx.lineTo(px, h - padB); ctx.stroke();
+        ctx.setLineDash([]);
+        for (const ln of lines){
+          const y = sampleLineAt(ln, hoverX);
+          if (!Number.isFinite(y)) continue;
+          const py = yToPx(y, h);
+          ctx.fillStyle = ln.color;
+          ctx.beginPath(); ctx.arc(px, py, 3.5, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "rgba(11,15,20,0.9)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+
+      ctx.restore();
+    }
+
+    function updateTooltip(){
+      if (hoverX == null || hoverX < xMin || hoverX > xMax){
+        tooltipEl.hidden = true;
+        return;
+      }
+      const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
+      let rows = `<div class="tt-x">x = ${fmtXAxis(hoverX, xUnit)}</div>`;
+      for (const ln of lines){
+        const y = sampleLineAt(ln, hoverX);
+        if (!Number.isFinite(y)) continue;
+        rows += `<div class="tt-row"><span class="tt-sw" style="background:${ln.color}"></span>${fmtYAxis(y)} ${yUnit}</div>`;
+      }
+      tooltipEl.innerHTML = rows;
+      tooltipEl.hidden = false;
+      const px = xToPx(hoverX, cssW);
+      const ttW = tooltipEl.offsetWidth || 80;
+      const cardLeft = canvas.offsetLeft;
+      let left = cardLeft + px;
+      const minL = cardLeft + ttW/2 + 4;
+      const maxL = cardLeft + cssW - ttW/2 - 4;
+      if (left < minL) left = minL;
+      if (left > maxL) left = maxL;
+      tooltipEl.style.left = `${left}px`;
+      tooltipEl.style.top = `${canvas.offsetTop + 4}px`;
+    }
+
+    function setHover(x){
+      hoverX = x;
+      draw();
+      updateTooltip();
+    }
+
+    function pxToXFromEvent(ev){
+      const rect = canvas.getBoundingClientRect();
+      const cssW = rect.width;
+      const px = ev.clientX - rect.left;
+      if (px < padL || px > cssW - padR) return null;
+      return pxToX(px, cssW);
+    }
+
+    return { canvas, draw, setHover, pxToXFromEvent, xMin, xMax };
+  }
+
+  function drawSegGraphs(container, seg, opts){
+    container.innerHTML = "";
+    const N = 200;
+    const samples = sampleSegment(seg, N, opts.xAxis);
+
+    // h2Shift to match h2 start to h1 start at the segment beginning
+    let h2Shift = 0;
+    if (opts.h2Match && hasTrack1() && hasTrack2() && Number.isFinite(seg.from.ele1) && Number.isFinite(seg.from.ele2)){
+      h2Shift = seg.from.ele1 - seg.from.ele2;
+    }
+
+    const xUnit = opts.xAxis === "time" ? "s" : "m";
+    const charts = [];
+    // Lateral distance + height advantage only make sense when x = time
+    const hideAdvGraphs = opts.xAxis === "distance";
+    for (const yKey of opts.ys){
+      if (hideAdvGraphs && (yKey === "distAdv" || yKey === "heightAdv")) continue;
+      const series = buildSeriesForY(yKey, samples, seg, { h2Shift });
+      if (!series || !series.lines.some(l => l.points.length)) continue;
+      const card = document.createElement("div");
+      card.className = "segGraph";
+      const title = document.createElement("div");
+      title.className = "gTitle";
+      title.textContent = `${series.name}  (x=${opts.xAxis})`;
+      card.appendChild(title);
+      const cv = document.createElement("canvas");
+      card.appendChild(cv);
+      const tip = document.createElement("div");
+      tip.className = "gTooltip";
+      tip.hidden = true;
+      card.appendChild(tip);
+      container.appendChild(card);
+
+      const chart = makeSegChart(cv, tip, series, xUnit);
+      charts.push(chart);
+
+      const onMove = (ev) => {
+        const x = chart.pxToXFromEvent(ev);
+        if (x == null){ broadcast(null); return; }
+        broadcast(x);
+      };
+      const onLeave = () => broadcast(null);
+      cv.addEventListener("mousemove", onMove);
+      cv.addEventListener("mouseleave", onLeave);
+    }
+
+    function broadcast(x){
+      for (const c of charts) c.setHover(x);
+    }
+
+    // Defer initial render so canvases have layout
+    requestAnimationFrame(() => { for (const c of charts) c.draw(); });
+  }
+
   // Initial disabled
   updateControls();
+  renderPtList();
 
 })();
 </script>
